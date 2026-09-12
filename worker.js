@@ -285,9 +285,12 @@ const htmlContent = `
         .tabs { display: flex; margin: 0 20px 16px; padding: 4px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 9px; gap: 3px; }
         button.tab { flex: 1; text-align: center; padding: 8px; color: var(--text-muted); background: transparent; font-weight: 500; font-size: 12px; border-radius: 6px; }
         button.tab.active { color: var(--accent); background: var(--bg-primary); box-shadow: 0 2px 5px #233d3209; }
-        .search-box { margin: 0 20px 16px; display: flex; align-items: center; gap: 7px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
-        .search-box input { width: 100%; padding: 8px 0 10px; border: none; background: transparent; font-size: 12px; border-radius: 0; }
+        .search-box { position: relative; margin: 0 20px 16px; display: flex; align-items: center; gap: 7px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+        .search-box input { width: 100%; padding: 8px 24px 10px 0; border: none; background: transparent; font-size: 12px; border-radius: 0; }
         .search-box:focus-within { border-color: var(--accent); }
+        .search-clear { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; padding: 0; border: none; border-radius: 50%; background: var(--soft); color: var(--text-muted); font-size: 12px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .search-clear:hover { color: var(--text-main); background: var(--border); }
+        .item-title mark, .item-preview mark { background: color-mix(in srgb, var(--accent) 32%, transparent); color: inherit; padding: 0 1px; border-radius: 2px; }
         .list-container { flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 15px; }
         .list-item { padding: 16px 13px 10px; margin-bottom: 5px; border-radius: 9px; border: 1px solid transparent; transition: background .15s; cursor: pointer; }
         .list-item:hover { background: var(--bg-secondary); }
@@ -307,8 +310,8 @@ const htmlContent = `
         .batch-bar { flex-wrap: wrap; align-items: center; gap: 5px; margin: 0 12px 8px; padding: 7px 9px; background: var(--soft); border-radius: 9px; font-size: 11px; }
         .batch-bar .count { margin-right: auto; color: var(--text-muted); }
         .batch-bar button { padding: 3px 8px; font-size: 11px; font-weight: normal; }
-        .sort-bar { padding: 0 12px 8px; }
-        #note-sort { width: 100%; padding: 6px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); color: var(--text-main); font-size: 12px; }
+        .sort-bar { padding: 0 20px 10px; display: flex; }
+        .heading-sort { max-width: 128px; padding: 3px 4px; border: 1px solid var(--border); border-radius: 7px; background: var(--soft); color: var(--text-main); font-size: 10px; }
         .item-meta { font-size: 10px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; }
         .add-btn-container { padding: 17px 20px; border-top: 1px solid var(--border); display: flex; }
         .add-btn-container button { width: 100%; background: transparent; color: var(--accent); border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); font-size: 12px; font-weight: 500; }
@@ -515,23 +518,21 @@ const htmlContent = `
         <div class="main-container">
             <button class="sidebar-scrim" id="sidebar-scrim" onclick="closeSidebar()" aria-label="关闭作品列表" tabindex="-1"></button>
             <aside class="sidebar" id="main-sidebar" aria-label="作品列表">
-                <div class="sidebar-heading"><strong>我的作品</strong><span style="display:flex;align-items:center;gap:6px;"><span id="item-count">0 篇</span><button class="btn-text" id="batch-toggle-btn" onclick="toggleBatchMode()" style="display:none;padding:2px 7px;font-size:10px;">批量管理</button></span></div>
+                <div class="sidebar-heading"><strong>我的作品</strong><span style="display:flex;align-items:center;gap:6px;"><span id="item-count">0 篇</span><select id="note-sort" class="heading-sort" aria-label="随手记排序方式" title="排序方式" onchange="changeNoteSort(this.value)" style="display:none;">
+                        <option value="modified">修改时间 新→旧</option>
+                        <option value="modified-asc">修改时间 旧→新</option>
+                        <option value="created">创建时间 新→旧</option>
+                        <option value="created-asc">创建时间 旧→新</option>
+                        <option value="title">标题 A→Z</option>
+                        <option value="title-desc">标题 Z→A</option>
+                        <option value="manual">手动排序</option>
+                    </select></span></div>
                 <div class="tabs">
                     <button class="tab active" id="tab-note" onclick="switchTab('note')" aria-pressed="true">随手记</button>
                     <button class="tab" id="tab-novel" onclick="switchTab('novel')" aria-pressed="false">故事集</button>
                 </div>
-                <label class="search-box" id="search-box-wrap"><span aria-hidden="true">⌕</span><input type="search" id="list-search" aria-label="搜索作品标题和正文" placeholder="搜索标题或正文…" oninput="renderList()"></label>
-                <div class="sort-bar" id="note-sort-bar">
-                    <select id="note-sort" aria-label="随手记排序方式" onchange="changeNoteSort(this.value)">
-                        <option value="modified">按修改时间（新 → 旧）</option>
-                        <option value="modified-asc">按修改时间（旧 → 新）</option>
-                        <option value="created">按创建时间（新 → 旧）</option>
-                        <option value="created-asc">按创建时间（旧 → 新）</option>
-                        <option value="title">按标题（A → Z）</option>
-                        <option value="title-desc">按标题（Z → A）</option>
-                        <option value="manual">手动排序（置顶优先 · 可拖拽）</option>
-                    </select>
-                </div>
+                <label class="search-box" id="search-box-wrap"><span aria-hidden="true">⌕</span><input type="search" id="list-search" aria-label="搜索作品标题和正文" placeholder="搜索标题或正文…" oninput="renderList()" onkeydown="if (event.key === 'Escape') clearSearch()"><button type="button" class="search-clear" id="search-clear" aria-label="清空搜索" onclick="event.preventDefault(); event.stopPropagation(); clearSearch()" style="display:none;">×</button></label>
+                <div class="sort-bar" id="note-tools-bar"><button class="btn-text" id="batch-toggle-btn" onclick="toggleBatchMode()" style="display:none;">批量管理</button></div>
                 <div class="batch-bar" id="batch-bar" style="display:none;">
                     <span class="count" id="batch-count">已选 0 篇</span>
                     <button class="btn-text" onclick="batchSelectAll()">全选</button>
@@ -1030,6 +1031,26 @@ const htmlContent = `
             const pad = v => String(v).padStart(2, '0');
             return (d.getFullYear() === now.getFullYear() ? '' : d.getFullYear() + '-') + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
         }
+        function highlightMatch(escaped, query) {
+            if (!query) return escaped;
+            const pattern = escapeHtml(query).replace(/[.*+?^$\\{\\}()\\[\\]\\\\]/g, '\\$&');
+            try { return escaped.replace(new RegExp(pattern, 'gi'), m => '<mark>' + m + '</mark>'); } catch { return escaped; }
+        }
+        function clearSearch() {
+            const input = document.getElementById('list-search');
+            if (!input.value) return;
+            input.value = '';
+            renderList();
+            input.focus();
+        }
+        document.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K') && document.getElementById('login-screen').style.display === 'none' && document.getElementById('search-box-wrap').style.display !== 'none') {
+                e.preventDefault();
+                const input = document.getElementById('list-search');
+                input.focus();
+                input.select();
+            }
+        });
         function changeNoteSort(value) {
             noteSort = NOTE_SORTERS[value] ? value : 'modified';
             localStorage.setItem('cloud_note_sort', noteSort);
@@ -1039,7 +1060,6 @@ const htmlContent = `
         function toggleBatchMode(force) {
             batchMode = force === undefined ? !batchMode : force;
             if (!batchMode) batchSelected.clear();
-            document.getElementById('search-box-wrap').style.display = batchMode ? 'none' : '';
             document.getElementById('batch-bar').style.display = batchMode ? 'flex' : 'none';
             updateBatchCount();
             renderList();
@@ -1053,7 +1073,8 @@ const htmlContent = `
             updateBatchCount();
         }
         function batchSelectAll() {
-            appData.notes.forEach(n => batchSelected.add(n.id));
+            const query = document.getElementById('list-search').value.trim().toLocaleLowerCase();
+            appData.notes.forEach(n => { if (!query || (n.title + ' ' + itemText(n)).toLocaleLowerCase().includes(query)) batchSelected.add(n.id); });
             updateBatchCount();
             renderList();
         }
@@ -1120,12 +1141,14 @@ const htmlContent = `
             let visible = list.filter(item => !query || (item.title + ' ' + itemText(item)).toLocaleLowerCase().includes(query));
             const batching = batchMode && isNote;
             if (isNote) visible.sort((a, b) => (!!b.pinned - !!a.pinned) || NOTE_SORTERS[noteSort](a, b));
-            document.getElementById('item-count').textContent = list.length + ' 篇';
+            document.getElementById('search-clear').style.display = document.getElementById('list-search').value ? '' : 'none';
+            document.getElementById('item-count').textContent = query ? '匹配 ' + visible.length + ' / ' + list.length + ' 篇' : list.length + ' 篇';
             document.getElementById('tab-note').setAttribute('aria-pressed', isNote);
             document.getElementById('tab-novel').setAttribute('aria-pressed', currentTab === 'novel');
             document.getElementById('batch-toggle-btn').style.display = isNote && !batchMode ? '' : 'none';
-            document.getElementById('note-sort-bar').style.display = isNote ? '' : 'none';
+            document.getElementById('note-tools-bar').style.display = isNote ? '' : 'none';
             const sortSelect = document.getElementById('note-sort');
+            sortSelect.style.display = isNote ? '' : 'none';
             if (sortSelect.value !== noteSort) sortSelect.value = noteSort;
             if (!visible.length) {
                 const empty = document.createElement('p'); empty.className = 'list-empty';
@@ -1151,7 +1174,7 @@ const htmlContent = `
                     infoDiv.appendChild(check);
                 }
                 const tagStr = (currentTab === 'novel' && item.type === 'short') ? ' <span style="font-size:11px; background:rgba(64,158,255,0.15); color:var(--accent); padding:1px 4px; border-radius:3px;">短篇</span>' : '';
-                infoDiv.innerHTML = '<span class="item-title">' + escapeHtml(item.title || '未命名') + tagStr + '</span>' + (isNote && item.pinned ? '<span class="pin-badge">置顶</span>' : '');
+                infoDiv.innerHTML = '<span class="item-title">' + highlightMatch(escapeHtml(item.title || '未命名'), query) + tagStr + '</span>' + (isNote && item.pinned ? '<span class="pin-badge">置顶</span>' : '');
                 if (isNote && !batching && noteSort === 'manual') {
                     const handle = document.createElement('span');
                     handle.className = 'drag-handle'; handle.textContent = '⠿'; handle.title = '拖动排序';
@@ -1210,7 +1233,8 @@ const htmlContent = `
                     div.appendChild(meta);
                 }
                 const preview = document.createElement('div'); preview.className = 'item-preview';
-                preview.textContent = itemText(item).replace(/\\s+/g, ' ').slice(0, 70) || '还没有正文，等待你的第一句话。';
+                const previewText = itemText(item).replace(/\\s+/g, ' ').slice(0, 70);
+                preview.innerHTML = previewText ? highlightMatch(escapeHtml(previewText), query) : '还没有正文，等待你的第一句话。';
                 div.appendChild(preview);
                 div.appendChild(actionsDiv);
                 div.onclick = () => {
