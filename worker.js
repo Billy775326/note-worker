@@ -317,7 +317,8 @@ const htmlContent = `
         .list-toolbar select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
         .toolbar-btn { padding: 8px 12px; font-size: 11px; font-weight: 500; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); color: var(--text-main); white-space: nowrap; cursor: pointer; }
         .toolbar-btn:hover { border-color: var(--accent); color: var(--accent); }
-        .item-meta { font-size: 10px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; }
+        .item-created { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+        .item-modified { font-size: 10px; color: var(--text-muted); margin-right: auto; align-self: center; }
         .add-btn-container { padding: 17px 20px; border-top: 1px solid var(--border); display: flex; }
         .add-btn-container button { width: 100%; background: transparent; color: var(--accent); border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); font-size: 12px; font-weight: 500; }
         .add-btn-container button:hover { background: var(--soft); }
@@ -1304,12 +1305,18 @@ const htmlContent = `
                 deleteBtn.onclick = e => deleteItem(item.id, e);
                 actionsDiv.appendChild(renameBtn);
                 actionsDiv.appendChild(deleteBtn);
+                if (isNote) {
+                    const modified = document.createElement('span');
+                    modified.className = 'item-modified';
+                    modified.textContent = '修改 ' + formatStamp(item.updatedAt);
+                    actionsDiv.insertBefore(modified, actionsDiv.firstChild);
+                }
                 div.appendChild(infoDiv);
                 if (isNote) {
-                    const meta = document.createElement('div');
-                    meta.className = 'item-meta';
-                    meta.textContent = '修改 ' + formatStamp(item.updatedAt) + ' · 创建 ' + formatStamp(item.createdAt);
-                    div.appendChild(meta);
+                    const created = document.createElement('div');
+                    created.className = 'item-created';
+                    created.textContent = '创建 ' + formatStamp(item.createdAt);
+                    div.appendChild(created);
                 }
                 const preview = document.createElement('div'); preview.className = 'item-preview';
                 const previewText = itemText(item).replace(/\\s+/g, ' ').slice(0, 70);
