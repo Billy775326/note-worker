@@ -270,13 +270,18 @@ const htmlContent = `
         #login-err { font-size: 13px; line-height: 1.6; }
         #app { display: none; height: 100vh; height: 100dvh; flex-direction: column; padding: 22px; max-width: 1920px; margin: auto; }
         #app > header { flex-shrink: 0; min-height: 72px; padding: 15px 25px; background: var(--nav-bg); display: flex; justify-content: space-between; align-items: center; gap: 16px; border: 1px solid var(--border); border-radius: 16px 16px 0 0; }
-        .logo { display: flex; align-items: center; gap: 11px; font-family: Georgia, serif; font-size: 25px; letter-spacing: -.5px; }
-        .logo small { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; font-size: 11px; font-weight: 400; letter-spacing: 2px; margin-left: 8px; padding-left: 17px; border-left: 1px solid var(--border); color: var(--text-muted); }
-        .controls { display: flex; align-items: center; gap: 12px; }
-        #save-status { font-size: 11px; color: var(--text-muted); margin-right: 5px; }
+        .header-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .logo { display: flex; align-items: center; gap: 10px; font-family: Georgia, serif; font-size: 21px; letter-spacing: -.5px; }
+        .logo .brand-mark { width: 31px; height: 31px; font-size: 21px; border-radius: 9px; }
+        .logo small { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; font-size: 10px; font-weight: 400; letter-spacing: 2px; margin-left: 6px; padding-left: 14px; border-left: 1px solid var(--border); color: var(--text-muted); white-space: nowrap; }
+        .controls { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+        .header-divider { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+        #save-status { font-size: 11px; color: var(--text-muted); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         #manual-save-btn { padding: 9px 17px; }
-        #theme-select { font-size: 12px; padding: 8px 10px; background: transparent; }
+        #theme-select { font-size: 12px; padding: 8px 10px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 9px; }
         #theme-select option { background: var(--bg-primary); color: var(--text-main); }
+        #app > header .logout-button { color: var(--danger); background: transparent; border-color: transparent; }
+        #app > header .logout-button:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); border-color: transparent; }
         .main-container { display: flex; flex: 1; min-height: 0; position: relative; overflow: hidden; border: 1px solid var(--border); border-top: none; border-radius: 0 0 16px 16px; box-shadow: var(--shadow); background: var(--bg-primary); }
         .sidebar { width: 290px; flex-shrink: 0; background: var(--nav-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
         .sidebar-heading { display: flex; justify-content: space-between; align-items: center; padding: 27px 23px 18px; }
@@ -446,14 +451,16 @@ const htmlContent = `
         @media (max-width: 1100px) { .logo small { display: none; } .sidebar { width: 250px; } .novel-sidebar { width: 205px; } .editor-header { padding: 16px 22px; } .editor-body { padding: 24px; } }
         @media (max-width: 768px) {
             #app { padding: 0; } #app > header { min-height: 65px; padding: 12px 14px; border-radius: 0; border: none; border-bottom: 1px solid var(--border); gap: 8px; }
-            .logo { font-size: 23px; gap: 8px; } .logo .brand-mark { display: none; }
-            .controls { gap: 5px; } #save-status { display: none; } #manual-save-btn { padding: 8px 12px; font-size: 11px; } #theme-select { padding: 7px 4px; font-size: 11px; max-width: 83px; } .logout-button { padding: 7px !important; font-size: 11px; }
+            .logo { font-size: 18px; gap: 8px; } .logo .brand-mark { display: none; } .header-divider { display: none; }
+            .controls { gap: 5px; } #save-status { display: none; } #manual-save-btn { padding: 8px 12px; font-size: 11px; } #theme-select { padding: 7px 4px; font-size: 12px; max-width: 96px; } .logout-button { padding: 7px !important; font-size: 11px; }
             .main-container { border: none; border-radius: 0; } .mobile-toggle { display: inline-flex; padding: 7px !important; font-size: 12px; }
+            .search-box input { font-size: 16px; } .list-toolbar select { font-size: 16px; } .table-dialog input[type="text"] { font-size: 16px; }
+            .item-actions button { padding: 7px 9px; font-size: 11px; } .batch-bar button { padding: 7px 10px; font-size: 12px; }
             .sidebar { position: absolute; top: 0; bottom: 0; left: 0; width: min(84%, 310px); z-index: 25; transform: translateX(-101%); transition: transform .2s; box-shadow: var(--shadow); }
             .sidebar:not(.show), .novel-sidebar:not(.show) { visibility: hidden; }
             .sidebar.show { transform: translateX(0); } .sidebar-scrim.show { display: block; position: absolute; inset: 0; border: none; border-radius: 0; background: #14281e55; z-index: 24; }
             .novel-sidebar { position: absolute; top: 0; bottom: 0; left: 0; width: min(80%, 270px); z-index: 20; transform: translateX(-101%); transition: transform .2s; box-shadow: var(--shadow); } .novel-sidebar.show { transform: translateX(0); }
-            .editor-header { flex-wrap: wrap; gap: 5px; padding: 13px 20px; } #note-title { flex: 1; font-size: 21px !important; } .editor-header .controls-right { gap: 1px; } .editor-header button { font-size: 10px; padding: 7px; }
+            .editor-header { flex-wrap: wrap; gap: 5px; padding: 13px 20px; } #note-title { flex: 1; font-size: 21px !important; } .editor-header .controls-right { gap: 1px; } .editor-header button { font-size: 11px; padding: 8px; }
             .editor-body { padding: 22px 23px 10px; } textarea.content-input { font-size: 16px; line-height: 2; } .writing-footer { margin: 0 22px; } .writing-footer span:last-child { font-size: 9px; }
             .note-typesetting { padding: 9px 20px; gap: 8px 12px; font-size: 10px; }
             .note-typesetting label { gap: 4px; } .note-typesetting select { padding: 6px 4px; }
@@ -465,6 +472,11 @@ const htmlContent = `
             #empty-state { padding: 30px 24px; } .empty-inner h2 { font-size: 25px; } .empty-tip { margin-top: 30px; }
             #login-screen { padding: 22px; } .login-shell { display: block; min-height: 0; max-width: 440px; border-radius: 18px; } .login-story { padding: 24px 28px; } .login-story h1 { font-size: 28px; margin: 25px 0 0; } .login-story > p, .paper-art, .story-foot { display: none; } .story-brand { font-size: 15px; } .login-box { padding: 30px 28px; } .login-box h2 { font-size: 27px; } .login-description { margin-bottom: 24px; font-size: 12px; } .login-hint { margin-top: 22px; }
             .reader-toolbar { padding: 10px; gap: 5px; } .reader-toolbar button { font-size: 11px; padding: 6px; } .reader-content-wrapper { padding-top: 125px; }
+        }
+        @media (max-width: 400px) {
+            #app > header { padding: 10px; } .header-brand { gap: 6px; }
+            .controls { gap: 4px; } #manual-save-btn { padding: 8px 9px; } #theme-select { max-width: 88px; padding: 7px 2px; } .logout-button { padding: 7px 6px !important; }
+            .sidebar { width: 88%; } .batch-bar { margin: 0 14px 10px; } .list-toolbar { margin: 0 14px 14px; } .search-box { margin: 0 14px 12px; }
         }
         @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
 
@@ -517,20 +529,22 @@ const htmlContent = `
 
     <div id="app">
         <header>
-            <div style="display:flex;align-items:center;gap:7px;">
+            <div class="header-brand">
                 <button class="btn-text mobile-toggle" onclick="toggleSidebar()" aria-label="打开或关闭作品列表" aria-controls="main-sidebar" aria-expanded="false" id="sidebar-toggle">☰</button>
-                <div class="logo"><span class="brand-mark" aria-hidden="true">n</span>note<small>留一页给灵感</small></div>
+                <div class="logo"><span class="brand-mark" aria-hidden="true">n</span><span class="logo-text">note</span><small>留一页给灵感</small></div>
             </div>
             <div class="controls">
                 <span id="save-status" role="status" aria-live="polite">云端已同步</span>
                 <button id="manual-save-btn" onclick="forceManualSave()">保存</button>
+                <span class="header-divider" aria-hidden="true"></span>
+                <button class="btn-text" onclick="openHistoryDialog()">历史</button>
                 <select id="theme-select" aria-label="切换配色主题" onchange="changeTheme(this.value)">
                     <option value="light">暖纸 · 白昼</option>
                     <option value="dark">松影 · 夜色</option>
                     <option value="passion">陶土 · 暖调</option>
                 </select>
-                <button class="btn-text" onclick="openHistoryDialog()">历史</button>
-                <button onclick="logout()" class="btn-danger logout-button">退出</button>
+                <span class="header-divider" aria-hidden="true"></span>
+                <button onclick="logout()" class="btn-text logout-button">退出</button>
             </div>
         </header>
 
