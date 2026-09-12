@@ -13,8 +13,10 @@ function equal(a, b) {
   for (let i = 0; i < a.length; i++) difference |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return difference === 0;
 }
+const envValue = value => typeof value === 'string' ? value.trim() : '';
 async function signingKey(env) {
-  return crypto.subtle.importKey('raw', enc.encode(JSON.stringify([env.SESSION_SECRET, env.PASSWORD_SALT, env.PASSWORD_HASH, loginPath(env)])), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+  const material = JSON.stringify([envValue(env.SESSION_SECRET), envValue(env.PASSWORD_SALT), envValue(env.PASSWORD_HASH), loginPath(env)]);
+  return crypto.subtle.importKey('raw', await crypto.subtle.digest('SHA-256', enc.encode(material)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 }
 function loginPath(env) {
   const value = typeof env.login === 'string' ? env.login.trim().replace(/^\/+|\/+$/g, '') : '';
@@ -22,9 +24,9 @@ function loginPath(env) {
 }
 function missingConfig(env) {
   return [
-    [/^[a-f0-9]{32}$/i.test(env.PASSWORD_HASH || ''), 'PASSWORD_HASH（须为 32 位十六进制加盐 MD5，不是密码原文）'],
-    [typeof env.PASSWORD_SALT === 'string' && env.PASSWORD_SALT.length >= 16, 'PASSWORD_SALT（至少 16 字符）'],
-    [typeof env.SESSION_SECRET === 'string' && env.SESSION_SECRET.length >= 32, 'SESSION_SECRET（至少 32 字符）'],
+    [!!envValue(env.PASSWORD_HASH), 'PASSWORD_HASH（填 32 位十六进制加盐 MD5，或直接填密码原文）'],
+    [!!envValue(env.PASSWORD_SALT), 'PASSWORD_SALT（任意非空字符串，建议随机十六进制）'],
+    [!!envValue(env.SESSION_SECRET), 'SESSION_SECRET（任意非空字符串，建议随机十六进制）'],
     [!!env.CLOUD_EDITOR_KV, 'CLOUD_EDITOR_KV（Settings → Bindings 里的 KV 绑定）'],
     [!!env.LOGIN_RATE_LIMITER, 'LOGIN_RATE_LIMITER（登录限流绑定）'],
   ].filter(([ok]) => !ok).map(([, label]) => label);
@@ -127,8 +129,11 @@ export default {
         if (!success) return json({ error: '尝试次数过多，请稍后重试' }, 429, { 'Retry-After': '60' });
         const body = await readJson(request, 4096);
         if (!body || typeof body.password !== 'string' || !body.password || body.password.length > 1024) return json({ error: '密码格式错误' }, 400);
-        const actual = await digest('MD5', env.PASSWORD_SALT + ':' + body.password);
-        if (!equal(actual, env.PASSWORD_HASH.toLowerCase())) return json({ error: '密码错误' }, 401);
+        const salt = envValue(env.PASSWORD_SALT);
+        const stored = envValue(env.PASSWORD_HASH);
+        const actual = await digest('MD5', salt + ':' + body.password);
+        const expected = /^[a-f0-9]{32}$/i.test(stored) ? stored.toLowerCase() : await digest('MD5', salt + ':' + stored);
+        if (!equal(actual, expected)) return json({ error: '密码错误' }, 401);
         return json({ success: true }, 200, { 'Set-Cookie': cookie(await makeSession(env)) });
       }
       if (url.pathname === '/api/logout' && request.method === 'POST') return json({ success: true }, 200, { 'Set-Cookie': cookie('', 0) });

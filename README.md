@@ -23,7 +23,7 @@ note-worker/
 | 你想要 | 用哪个配置 | 说明 |
 | --- | --- | --- |
 | **进入登录页面**（决定网址） | Secret `login` | 填 `my-notes` → 登录页就是 `https://<Worker名>.<账户子域>.workers.dev/my-notes`。只填后缀路径，不要带域名；3～128 位英文字母、数字、下划线、连字符。 |
-| **输入密码登录**（验证依据） | Secret `PASSWORD_SALT` + `PASSWORD_HASH` | 登录页密码框输入的密码，由后端计算 `MD5(盐 + ':' + 输入的密码)` 并与 `PASSWORD_HASH` 比对，一致才发会话 Cookie。明文密码不保存在任何地方。 |
+| **输入密码登录**（验证依据） | Secret `PASSWORD_SALT` + `PASSWORD_HASH` | `PASSWORD_HASH` 两种填法任选：① 按「改密码」公式算出 32 位十六进制加盐 MD5（推荐）；② **直接填密码原文**，后端登录时现算加盐 MD5 比对（原文仅存于 Cloudflare Secrets）。`PASSWORD_SALT` 为任意非空字符串，建议随机十六进制。 |
 
 一句话：`login` 决定**在哪个网址登录**，`PASSWORD_HASH` 决定**输入什么密码能登录**。
 
@@ -31,8 +31,10 @@ note-worker/
 
 | 名称 | 类型 | 作用 |
 | --- | --- | --- |
-| `SESSION_SECRET` | Secret | 会话 Cookie 的签名密钥（≥32 字符）；更换后所有登录状态失效 |
+| `SESSION_SECRET` | Secret | 会话 Cookie 的签名密钥，任意非空字符串（建议 64 位随机十六进制）；更换后所有登录状态失效 |
 | `PROXY_ALLOWED_HOSTS` | 普通变量 | 采集代理的域名白名单，逗号分隔；留空禁用网络采集 |
+
+以上三个 Secret 字段都**兼容明文**：不强制格式，首尾空格和换行会自动忽略；但短盐/短密钥会降低防破解强度，正式使用仍建议用随机长值。
 
 首页与错误入口只返回独立静态展示页，不读取 KV、不包含私人入口、登录表单或编辑器脚本；私人 API 位于 `/<login>/api/...`，同样要求登录。`login` 无效或未设置时关闭私人入口。
 
@@ -45,7 +47,7 @@ $salt = '粘贴现有 PASSWORD_SALT'; $pwd = Read-Host '新密码'
 [BitConverter]::ToString([Security.Cryptography.MD5]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes("${salt}:${pwd}"))).Replace('-','').ToLowerInvariant()
 ```
 
-明文密码从不保存；控制台查看不到 Secret 原文，但可以覆盖修改。
+明文密码从不保存；控制台查看不到 Secret 原文，但可以覆盖修改。**图省事的替代做法**：直接把新密码原文填入 `PASSWORD_HASH`（无需计算，立即生效），效果等同，只是原文会保存在 Cloudflare Secrets 中。
 
 **改入口**：修改 `login` Secret 即可。旧地址立即关闭，旧会话全部失效，需用新地址重新登录。
 
@@ -83,9 +85,9 @@ $salt = '粘贴现有 PASSWORD_SALT'; $pwd = Read-Host '新密码'
    | 名称 | 填写内容 | 对应作用 |
    | --- | --- | --- |
    | `login` | 入口后缀，如 `my-notes` | **登录页网址**：`https://…/<login>` |
-   | `PASSWORD_SALT` | 64 位随机十六进制（生成命令见下） | 密码验证的盐 |
-   | `PASSWORD_HASH` | 用上面的盐按「改密码」公式计算，32 位十六进制 | **登录页要输入的密码**对应的哈希 |
-   | `SESSION_SECRET` | 生成命令同样适用，取 64 位 | 会话签名，更换后全部会话失效 |
+   | `PASSWORD_SALT` | 任意非空字符串，建议 64 位随机十六进制（生成命令见下） | 密码验证的盐 |
+   | `PASSWORD_HASH` | 推荐按「改密码」公式计算 32 位十六进制；**也可直接填密码原文** | **登录页要输入的密码**（哈希或原文均可） |
+   | `SESSION_SECRET` | 任意非空字符串，建议 64 位随机十六进制 | 会话签名，更换后全部会话失效 |
 
    ```powershell
    # 生成 64 位随机十六进制（PASSWORD_SALT / SESSION_SECRET 都用它）
@@ -104,7 +106,7 @@ $salt = '粘贴现有 PASSWORD_SALT'; $pwd = Read-Host '新密码'
 - **会话**：HMAC-SHA256 签名 Cookie，`HttpOnly; Secure; SameSite=Strict`，有效期 8 小时，需 HTTPS。无状态会话无法单独吊销已复制的令牌；更换 `SESSION_SECRET` 或密码盐/哈希后所有旧会话失效。退出先保存再清除 Cookie。
 - **数据**：KV 键 `user_creative_data` 全量保存，多标签页/多人并发编辑仍可能互相覆盖，KV 有跨区传播延迟；未实现协同编辑与冲突合并。历史快照存于第二个键 `user_creative_history`，每次保存多一次 KV 读/写。
 - **后端防护**：写请求校验 Origin、自定义请求头、JSON 类型、数据结构及 20 MiB 上限；`GET /api/history` 与 `GET /api/history-item?ts=` 同样要求登录；代理限制域名白名单、逐跳重定向复查、15 秒超时、5 MiB 响应体，不转发用户 Cookie。
-- **登录验证**：完全在后端完成，不读取任何明文密码配置；MD5 加盐抗离线破解能力弱，面向公网长期使用建议迁移 PBKDF2/Argon2。
+- **登录验证**：完全在后端完成；`PASSWORD_HASH` 支持「加盐 MD5 哈希」或「密码原文」两种填法，填原文时原文仅存于 Cloudflare Secrets。MD5 加盐抗离线破解能力弱，面向公网长期使用建议迁移 PBKDF2/Argon2。
 - **测试**：`npm test` 在 Node 中以模拟 KV/限流/代理运行；Node 不支持 Workers 的 MD5 WebCrypto 扩展，测试内以 OpenSSL 等价替代；上线后仍需真实环境验证。
 
 官方文档：[Web Crypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/)、[Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)、[KV bindings](https://developers.cloudflare.com/kv/concepts/kv-bindings/)、[Rate limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)。

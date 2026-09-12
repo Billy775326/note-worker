@@ -143,13 +143,30 @@ test('public pages never read KV, embed private scripts or reveal entrance', asy
   assert.match(privatePage.headers.get('X-Robots-Tag'), /noindex/);
 });
 
-test('plaintext PASSWORD env is ignored; hash mode stays authoritative', async () => {
+test('plaintext PASSWORD env is ignored; empty PASSWORD_HASH fails closed', async () => {
   const env = environment();
   env.PASSWORD = password;
   env.PASSWORD_HASH = '12'.repeat(16);
   assert.equal((await worker.fetch(request('/api/login', { method: 'POST', body: { password } }), env)).status, 401);
-  env.PASSWORD_HASH = 'nothex';
-  assert.equal((await worker.fetch(request('/api/login', { method: 'POST', body: { password } }), env)).status, 503);
+  env.PASSWORD_HASH = '  ';
+  const res = await worker.fetch(request('/api/login', { method: 'POST', body: { password } }), env);
+  assert.equal(res.status, 503);
+  assert.match((await res.json()).error, /PASSWORD_HASH/);
+});
+
+test('PASSWORD_HASH accepts plaintext password, short secrets work, whitespace is trimmed', async () => {
+  const env = environment();
+  env.PASSWORD_HASH = '  我的明文密码123 ';
+  env.PASSWORD_SALT = env.PASSWORD_SALT + ' \n';
+  env.SESSION_SECRET = ' short-secret ';
+  const res = await worker.fetch(request('/api/login', { method: 'POST', body: { password: '我的明文密码123' } }), env);
+  assert.equal(res.status, 200);
+  const cookie = res.headers.get('Set-Cookie').split(';')[0];
+  assert.equal((await worker.fetch(request('/api/session', { cookie }), env)).status, 200);
+  assert.equal((await worker.fetch(request('/api/login', { method: 'POST', body: { password: 'wrong' } }), env)).status, 401);
+  env.PASSWORD_HASH = 'nothex-value';
+  env.SESSION_SECRET = 'another';
+  assert.equal((await worker.fetch(request('/api/session', { cookie }), env)).status, 401);
 });
 
 test('save-data snapshots history with dedupe, force flag and version fetch', async () => {
