@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { readFile, writeFile } from 'node:fs/promises';
-const result = await build({ entryPoints: ['markdown-browser.js'], bundle: true, minify: true, format: 'iife', platform: 'browser', write: false, legalComments: 'inline' });
+const result = await build({ entryPoints: ['src/markdown-browser.js'], bundle: true, minify: true, format: 'iife', platform: 'browser', write: false, legalComments: 'inline' });
 const bundle = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const declaration = '// MARKDOWN_VENDOR_START\nconst markdownVendor = ' + JSON.stringify(bundle) + ';\n// MARKDOWN_VENDOR_END\n';
 let worker = await readFile('worker.js', 'utf8');

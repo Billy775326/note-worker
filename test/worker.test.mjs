@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
-import worker from './worker.js';
+import worker from '../worker.js';
 
 // Node WebCrypto lacks Workers' MD5 extension; use OpenSSL only for that algorithm.
 const nativeDigest = crypto.subtle.digest.bind(crypto.subtle);

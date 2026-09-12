@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:markdown": "node build-markdown.mjs",
-    "test": "node --test test.mjs",
+    "build:markdown": "node scripts/build-markdown.mjs",
+    "test": "node --test test/worker.test.mjs",
     "dev": "npx wrangler dev",
     "deploy": "npx wrangler deploy"
   },
