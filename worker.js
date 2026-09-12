@@ -308,9 +308,10 @@ const htmlContent = `
         .list-item.drag-over { border: 1px dashed var(--accent); }
         .list-item.selected { background: var(--soft); border-color: color-mix(in srgb, var(--accent) 30%, var(--soft)); }
         .item-check { width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
-        .batch-bar { flex-wrap: wrap; align-items: center; gap: 5px; margin: 0 12px 8px; padding: 7px 9px; background: var(--soft); border-radius: 9px; font-size: 11px; }
-        .batch-bar .count { margin-right: auto; color: var(--text-muted); }
-        .batch-bar button { padding: 3px 8px; font-size: 11px; font-weight: normal; }
+        .batch-bar { display: none; flex-direction: column; gap: 5px; margin: 0 20px 10px; padding: 8px 10px; background: var(--soft); border-radius: 10px; font-size: 11px; }
+        .batch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+        .batch-row .count { margin-right: auto; color: var(--text-muted); }
+        .batch-bar button { padding: 4px 9px; font-size: 11px; font-weight: normal; }
         .list-toolbar { display: flex; align-items: center; gap: 6px; margin: 0 20px 14px; }
         .list-toolbar select { flex: 1; min-width: 0; padding: 8px 10px; font-size: 12px; border-radius: 10px; background: var(--bg-secondary); outline: none; box-shadow: none; appearance: none; -webkit-appearance: none; }
         .list-toolbar select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
@@ -541,12 +542,20 @@ const htmlContent = `
                     <button class="toolbar-btn" id="batch-toggle-btn" onclick="toggleBatchMode()" style="display:none;">批量管理</button>
                 </div>
                 <div class="batch-bar" id="batch-bar" style="display:none;">
-                    <span class="count" id="batch-count">已选 0 篇</span>
-                    <button class="btn-text" onclick="batchSelectAll()">全选</button>
-                    <button class="btn-text" onclick="batchPin(true)">置顶</button>
-                    <button class="btn-text" onclick="batchPin(false)">取消置顶</button>
-                    <button class="btn-text btn-danger" onclick="batchDelete()">删除</button>
-                    <button class="btn-text" onclick="toggleBatchMode(false)">完成</button>
+                    <div class="batch-row">
+                        <span class="count" id="batch-count">已选 0 篇</span>
+                        <button class="btn-text" onclick="toggleBatchMode(false)">完成</button>
+                    </div>
+                    <div class="batch-row">
+                        <button class="btn-text" onclick="batchSelectAll()">全选</button>
+                        <button class="btn-text" onclick="batchSelectNone()">清空</button>
+                        <button class="btn-text" onclick="batchInvert()">反选</button>
+                        <button class="btn-text" onclick="batchPin(true)">置顶</button>
+                        <button class="btn-text" onclick="batchPin(false)">取消置顶</button>
+                        <button class="btn-text" onclick="batchMerge()">合并</button>
+                        <button class="btn-text" onclick="batchExport()">导出</button>
+                        <button class="btn-text btn-danger" onclick="batchDelete()">删除</button>
+                    </div>
                 </div>
                 <div class="list-container" id="list-container"></div>
                 <div class="add-btn-container">
@@ -1073,7 +1082,7 @@ const htmlContent = `
         }
         function updateBatchCount() {
             const el = document.getElementById('batch-count');
-            if (el) el.textContent = '已选 ' + batchSelected.size + ' 篇';
+            if (el) el.textContent = '已选 ' + batchSelected.size + ' / 共 ' + appData.notes.length + ' 篇';
         }
         function toggleBatchItem(id, checked) {
             if (checked) batchSelected.add(id); else batchSelected.delete(id);
@@ -1105,6 +1114,54 @@ const htmlContent = `
             updateBatchCount();
             renderList();
             await immediateSave();
+        }
+        function orderedSelectedNotes() {
+            const sorter = NOTE_SORTERS[noteSort];
+            return [...appData.notes].sort((a, b) => (!!b.pinned - !!a.pinned) || sorter(a, b)).filter(n => batchSelected.has(n.id));
+        }
+        function batchSelectNone() {
+            batchSelected.clear();
+            updateBatchCount();
+            renderList();
+        }
+        function batchInvert() {
+            const query = document.getElementById('list-search').value.trim().toLocaleLowerCase();
+            appData.notes.forEach(n => {
+                const hit = !query || (n.title + ' ' + itemText(n)).toLocaleLowerCase().includes(query);
+                if (!hit) return;
+                if (batchSelected.has(n.id)) batchSelected.delete(n.id); else batchSelected.add(n.id);
+            });
+            updateBatchCount();
+            renderList();
+        }
+        async function batchMerge() {
+            const picked = orderedSelectedNotes();
+            if (picked.length < 2) { alert('请至少选中两篇再合并'); return; }
+            if (!confirm('将选中的 ' + picked.length + ' 篇按当前列表顺序合并为一篇新笔记？原笔记保留。')) return;
+            const now = Date.now();
+            const merged = {
+                id: genId(),
+                title: '合并笔记 ' + new Date(now).toLocaleDateString('zh-CN'),
+                content: picked.map(n => '# ' + (n.title || '未命名') + '\n\n' + (n.content || '')).join('\n\n---\n\n'),
+                createdAt: now,
+                updatedAt: now
+            };
+            appData.notes.unshift(merged);
+            toggleBatchMode(false);
+            openItem(merged.id);
+            await immediateSave();
+        }
+        function batchExport() {
+            const picked = orderedSelectedNotes();
+            if (!picked.length) { alert('请先勾选要导出的文章'); return; }
+            const md = picked.map(n => '# ' + (n.title || '未命名') + '\n\n' + (n.content || '')).join('\n\n---\n\n');
+            const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.download = '随手记导出-' + new Date().toISOString().slice(0, 10) + '.md';
+            document.body.appendChild(link); link.click(); link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
         function applyPinState(ids, pinned) {
             const moved = appData.notes.filter(n => ids.includes(n.id));
