@@ -36,6 +36,8 @@ $salt = '粘贴现有 PASSWORD_SALT'; $pwd = Read-Host '新密码'
 
 ## 部署
 
+### 命令行部署（wrangler，推荐）
+
 1. 在本目录运行 `npm install --save-dev wrangler`，再运行 `npx wrangler login` 登录 Cloudflare。
 2. 修改 `wrangler.jsonc` 的 `name` 为目标 Worker 名称，将 KV ID 占位符替换为原有 KV namespace ID。必须使用原来的 KV 才能继续读取已有数据；键名仍为 `user_creative_data`。新项目可运行 `npx wrangler kv namespace create CLOUD_EDITOR_KV` 创建 KV。
 3. 在 PowerShell 运行 `./setup-secrets.ps1`，按隐藏输入提示设置密码。脚本生成 `.dev.vars` 和 `secrets.json`，均已加入忽略列表。
@@ -44,7 +46,27 @@ $salt = '粘贴现有 PASSWORD_SALT'; $pwd = Read-Host '新密码'
 6. 执行 `npm test`，然后运行 `npx wrangler deploy --secrets-file secrets.json`，一并发布代码和 Secrets。当前锁定的 Wrangler 版本支持此参数，避免代码先上线、Secrets 尚未配置的间隔。
 7. 打开部署输出的 HTTPS 地址验证登录、保存、刷新恢复和退出。未登录访问 `/api/get-data` 或 `/api/proxy` 应返回 401。
 
-也可以在 Cloudflare 控制台粘贴 `worker.js`，但仍需配置 KV、三个 Secrets、LOGIN_RATE_LIMITER 限流绑定和可选的域名变量；CLI 配置更容易复现。
+CLI 方式配置可复现；不方便用命令行时，按下面的手动流程在控制台操作，结果完全相同。
+
+### 手动部署（Cloudflare 控制台）
+
+1. **创建 Worker 并粘贴代码**：控制台 → Workers & Pages → Create → Create Worker，名称如 `note`。进入在线编辑器后清空模板代码，把本地 `worker.js` 全部内容粘贴进去，点 Deploy。
+2. **创建 KV**：控制台 → Storage & Databases → KV → Create namespace，名称任意（如 `note-data`）。升级已有项目时必须选择原来的 namespace，数据键仍为 `user_creative_data`（历史快照键为 `user_creative_history`）。
+3. **绑定 KV**：进入 Worker → Settings → Bindings → Add → KV namespace，变量名称填 `CLOUD_EDITOR_KV`，选择上一步创建的 namespace。
+4. **绑定登录限流**：同页 Add → Rate limiting，变量名称 `LOGIN_RATE_LIMITER`，namespace ID 填账号内未被占用的正整数（如 `1001`），限制 5 次 / 60 秒。若绑定列表没有 Rate limiting 类型，该绑定只能通过命令行方式（`wrangler.jsonc` 已配置）完成。
+5. **添加 Secrets**：Settings → Variables and Secrets → Add，类型选 Secret，逐个添加：
+
+   | 名称 | 填写内容 |
+   | --- | --- |
+   | `login` | 私人入口，如 `my-notes`（3～128 位字母、数字、下划线、连字符） |
+   | `PASSWORD_SALT` | 64 位随机十六进制，PowerShell 生成：`(1..64 | ForEach-Object { '{0:x}' -f (Get-Random -Max 16) }) -join ''` |
+   | `PASSWORD_HASH` | 用上面的盐按「改密码」一节的公式计算加盐 MD5（32 位十六进制） |
+   | `SESSION_SECRET` | 生成方式同盐，同样取 64 位；更换会使所有会话失效 |
+
+6. **添加普通变量（可选）**：同页 Add，类型 Text，名称 `PROXY_ALLOWED_HOSTS`，值为逗号分隔的可信采集域名；不用采集可跳过。
+7. **验证**：打开 `https://<Worker 名称>.<账户子域>.workers.dev/<login>`，依次验证登录、保存、刷新恢复、历史回滚；未登录请求 `/<login>/api/get-data` 应返回 401。
+
+以后更新：在线编辑器里重新粘贴新的 `worker.js` 保存即可，Secrets 和绑定不受影响。
 
 ## 会话与数据
 
