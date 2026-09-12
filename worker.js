@@ -386,6 +386,10 @@ const htmlContent = `
         .table-dialog .create-type-option input { width: auto; }
         #create-title-input { margin-top: 14px; }
         #rename-input { margin-top: 14px; }
+        .confirm-dialog { width: min(380px, calc(100% - 32px)); }
+        .confirm-dialog p { color: var(--text-main); font-size: 13px; margin-bottom: 18px; overflow-wrap: anywhere; }
+        button.btn-danger-solid { background: var(--danger); color: #fff; border: 1px solid var(--danger); }
+        button.btn-danger-solid:hover { background: var(--danger); color: #fff; filter: brightness(1.08); }
         .history-list { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 48px; max-height: 50vh; }
         .history-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); font-size: 12px; }
         .history-item strong { font-size: 13px; }
@@ -695,6 +699,14 @@ const htmlContent = `
             </div>
         </form>
     </dialog>
+    <dialog id="confirm-dialog" class="table-dialog confirm-dialog" aria-labelledby="confirm-dialog-title">
+        <h3 id="confirm-dialog-title">确认操作</h3>
+        <p id="confirm-dialog-message"></p>
+        <form method="dialog" class="dialog-actions">
+            <button type="button" class="btn-text" onclick="document.getElementById('confirm-dialog').close('cancel')">取消</button>
+            <button type="submit" id="confirm-dialog-ok" value="ok">确定</button>
+        </form>
+    </dialog>
     <dialog id="table-dialog" class="table-dialog" aria-labelledby="table-dialog-title">
         <form onsubmit="insertNoteTable(event)">
             <h3 id="table-dialog-title">插入表格</h3><p>插入后在编辑区填写内容，切换预览查看表格。</p>
@@ -813,7 +825,7 @@ const htmlContent = `
             } catch { list.innerHTML = '<div class="history-item">历史版本加载失败，请关闭后重试。</div>'; }
         }
         async function rollbackNoteVersion(version) {
-            if (!confirm('将当前文章的标题和正文回滚到所选版本？当前内容会先自动留存，可在「历史」里撤销。')) return;
+            if (!await showConfirm('将把这篇文章的标题和正文回滚到所选版本；当前内容会先自动留存，可在「历史」中撤销。', { title: '回滚确认', okText: '回滚' })) return;
             const note = appData.notes.find(n => n.id === historyNoteId);
             if (!note) { showToast('文章不存在或已删除', 'error'); document.getElementById('history-dialog').close(); return; }
             note.title = version.title;
@@ -840,6 +852,25 @@ const htmlContent = `
             toast.textContent = message;
             box.appendChild(toast);
             setTimeout(() => { toast.classList.add('toast-out'); setTimeout(() => toast.remove(), 350); }, 2800);
+        }
+        function showConfirm(message, options) {
+            const opts = options || {};
+            return new Promise(resolve => {
+                const dialog = document.getElementById('confirm-dialog');
+                document.getElementById('confirm-dialog-title').textContent = opts.title || '确认操作';
+                document.getElementById('confirm-dialog-message').textContent = message;
+                const ok = document.getElementById('confirm-dialog-ok');
+                ok.textContent = opts.okText || '确定';
+                ok.classList.toggle('btn-danger-solid', !!opts.danger);
+                let settled = false;
+                dialog.onclose = () => {
+                    if (settled) return;
+                    settled = true;
+                    resolve(dialog.returnValue === 'ok');
+                };
+                dialog.returnValue = '';
+                dialog.showModal();
+            });
         }
 
         function escapeHtml(value) {
@@ -911,7 +942,7 @@ const htmlContent = `
             document.getElementById('app').style.display = 'flex';
         }
         async function logout() {
-            if (!confirm('保存当前内容并退出登录？')) return;
+            if (!await showConfirm('当前内容会先保存到云端，退出后需重新登录。', { title: '退出登录', okText: '保存并退出' })) return;
             syncCurrentFields(); clearTimeout(saveTimeout);
             if (dataLoaded && !await saveDataToServer()) { showToast('保存失败，请重试后退出', 'error'); return; }
             try {
@@ -1165,7 +1196,7 @@ const htmlContent = `
         }
         async function batchDelete() {
             if (!batchSelected.size) return;
-            if (!confirm('确定要删除选中的 ' + batchSelected.size + ' 篇吗？数据将从云端永久抹去！')) return;
+            if (!await showConfirm('选中的 ' + batchSelected.size + ' 篇删除后将无法恢复。', { title: '批量删除', okText: '删除 ' + batchSelected.size + ' 篇', danger: true })) return;
             const doomed = new Set(batchSelected);
             appData.notes = appData.notes.filter(n => !doomed.has(n.id));
             if (activeNoteId && doomed.has(activeNoteId) && !appData.notes.some(n => n.id === activeNoteId)) {
@@ -1200,7 +1231,7 @@ const htmlContent = `
         async function batchMerge() {
             const picked = orderedSelectedNotes();
             if (picked.length < 2) { showToast('请至少选中两篇再合并', 'error'); return; }
-            if (!confirm('将选中的 ' + picked.length + ' 篇按当前列表顺序合并为一篇新笔记？原笔记保留。')) return;
+            if (!await showConfirm('将选中的 ' + picked.length + ' 篇按当前列表顺序合并为一篇新笔记，原笔记保留。', { title: '批量合并', okText: '合并' })) return;
             const now = Date.now();
             const merged = {
                 id: genId(),
@@ -1458,7 +1489,7 @@ const htmlContent = `
 
         async function deleteItem(id, event) {
             event.stopPropagation();
-            if (!confirm('确定要删除吗？数据将从云端永久抹去！')) return;
+            if (!await showConfirm('删除后数据将从云端永久抹去，无法恢复。', { title: '删除确认', okText: '删除', danger: true })) return;
 
             if (currentTab === 'novel') {
                 appData.novels = appData.novels.filter(n => n.id !== id);
@@ -1628,7 +1659,7 @@ const htmlContent = `
 
         async function deleteChapter(volId, chapId, event) {
             event.stopPropagation();
-            if (!confirm('确定删除此章节？')) return;
+            if (!await showConfirm('章节内容删除后将无法恢复。', { title: '删除章节', okText: '删除', danger: true })) return;
             const novel = appData.novels.find(n => n.id === activeNovelId);
             const vol = novel.volumes.find(v => v.id === volId);
             vol.chapters = vol.chapters.filter(c => c.id !== chapId);
@@ -1923,7 +1954,7 @@ const htmlContent = `
                 return;
             }
 
-            if (!confirm('识别成功！共提取出 ' + chapterTasks.length + ' 个纯净章节链接。是否马上开始自动排队同步正文？')) {
+            if (!await showConfirm('共识别出 ' + chapterTasks.length + ' 个纯净章节链接，是否立即开始自动排队同步正文？', { title: '开始采集', okText: '开始同步' })) {
                 msgEl.innerText = '采集已中止。'; return;
             }
 
