@@ -376,6 +376,9 @@ const htmlContent = `
         .table-dialog input { width: 95px; } .table-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
         .history-dialog { width: min(540px, calc(100% - 32px)); }
         .history-dialog[open] { display: flex; flex-direction: column; gap: 14px; }
+        .table-dialog .create-type-option { justify-content: flex-start; gap: 8px; margin: 0; font-size: 13px; }
+        .table-dialog .create-type-option input { width: auto; }
+        #create-title-input { margin-top: 14px; }
         .history-list { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 48px; max-height: 50vh; }
         .history-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); font-size: 12px; }
         .history-item strong { font-size: 13px; }
@@ -559,7 +562,7 @@ const htmlContent = `
                 </div>
                 <div class="list-container" id="list-container"></div>
                 <div class="add-btn-container">
-                    <button onclick="createNewItem()">＋ 写下新的灵感</button>
+                    <button onclick="openCreateDialog()">＋ 写下新的灵感</button>
                 </div>
             </aside>
 
@@ -654,13 +657,25 @@ const htmlContent = `
                     <div class="eyebrow">A SPACE FOR YOUR THOUGHTS</div>
                     <h2>每一页，都是新的开始</h2>
                     <p>打开一篇旧作，或写下一个新念头。<br>生活的片刻、未完的故事，都可以从这里开始。</p>
-                    <button onclick="createNewItem()">＋ 开始创作</button>
+                    <button onclick="openCreateDialog()">＋ 开始创作</button>
                     <div class="empty-tip">安心写作，内容会在停笔后自动保存</div>
                 </div>
             </div>
         </div>
     </div>
 
+    <dialog id="create-dialog" class="table-dialog" aria-labelledby="create-dialog-title">
+        <h3 id="create-dialog-title">新建记事本</h3>
+        <div id="create-type-row" style="display:none; flex-direction: column; gap: 10px; margin-top: 14px;">
+            <label class="create-type-option"><input type="radio" name="new-novel-type" value="long" checked>长篇连载（分卷分章）</label>
+            <label class="create-type-option"><input type="radio" name="new-novel-type" value="short">短篇小说（单篇正文）</label>
+        </div>
+        <input type="text" id="create-title-input" placeholder="标题" maxlength="100" style="width: 100%;" oninput="onCreateTitleInput()" onkeydown="if (event.key === 'Enter') confirmCreate()">
+        <div class="dialog-actions">
+            <button type="button" class="btn-text" onclick="closeCreateDialog()">取消</button>
+            <button type="button" id="create-confirm-btn" onclick="confirmCreate()" disabled>创建</button>
+        </div>
+    </dialog>
     <dialog id="table-dialog" class="table-dialog" aria-labelledby="table-dialog-title">
         <form onsubmit="insertNoteTable(event)">
             <h3 id="table-dialog-title">插入表格</h3><p>插入后在编辑区填写内容，切换预览查看表格。</p>
@@ -1142,7 +1157,7 @@ const htmlContent = `
             const merged = {
                 id: genId(),
                 title: '合并笔记 ' + new Date(now).toLocaleDateString('zh-CN'),
-                content: picked.map(n => '# ' + (n.title || '未命名') + '\n\n' + (n.content || '')).join('\n\n---\n\n'),
+                content: picked.map(n => '# ' + (n.title || '未命名') + '\\n\\n' + (n.content || '')).join('\\n\\n---\\n\\n'),
                 createdAt: now,
                 updatedAt: now
             };
@@ -1154,7 +1169,7 @@ const htmlContent = `
         function batchExport() {
             const picked = orderedSelectedNotes();
             if (!picked.length) { alert('请先勾选要导出的文章'); return; }
-            const md = picked.map(n => '# ' + (n.title || '未命名') + '\n\n' + (n.content || '')).join('\n\n---\n\n');
+            const md = picked.map(n => '# ' + (n.title || '未命名') + '\\n\\n' + (n.content || '')).join('\\n\\n---\\n\\n');
             const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
             const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
@@ -1331,17 +1346,34 @@ const htmlContent = `
             }
         }
 
-        async function createNewItem() {
+        let createMode = 'note';
+        function openCreateDialog() {
             document.getElementById('list-search').value = '';
-            if (currentTab === 'novel') {
-                const typeChoice = prompt('请选择小说类型：\\n1. 长篇连载 (支持分卷、分章树状结构)\\n2. 短篇小说 (单篇独立正文，合并并省略卷章)\\n请输入数字 1 或 2：', '1');
-                if (!typeChoice) return;
-                
-                const title = prompt(typeChoice === '2' ? '请输入短篇小说书名：' : '请输入长篇小说书名：');
-                if (!title) return;
-                
-                const newItem = { id: genId(), title: title };
-                if (typeChoice === '2') {
+            createMode = currentTab;
+            const isNovel = createMode === 'novel';
+            document.getElementById('create-dialog-title').textContent = isNovel ? '新建小说' : '新建记事本';
+            document.getElementById('create-type-row').style.display = isNovel ? 'flex' : 'none';
+            const input = document.getElementById('create-title-input');
+            input.value = '';
+            onCreateTitleInput();
+            document.getElementById('create-dialog').showModal();
+            setTimeout(() => input.focus(), 60);
+        }
+        function closeCreateDialog() {
+            document.getElementById('create-dialog').close();
+        }
+        function onCreateTitleInput() {
+            document.getElementById('create-confirm-btn').disabled = !document.getElementById('create-title-input').value.trim();
+        }
+        async function confirmCreate() {
+            if (document.getElementById('create-confirm-btn').disabled) return;
+            const title = document.getElementById('create-title-input').value.trim();
+            if (!title) return;
+            closeCreateDialog();
+            const newItem = { id: genId(), title: title };
+            if (createMode === 'novel') {
+                const type = document.querySelector('input[name="new-novel-type"]:checked').value;
+                if (type === 'short') {
                     newItem.type = 'short';
                     newItem.content = '';
                 } else {
@@ -1349,18 +1381,15 @@ const htmlContent = `
                     newItem.volumes = [];
                 }
                 appData.novels.unshift(newItem);
-                renderList();
-                openItem(newItem.id);
-                await immediateSave();
             } else {
-                const title = prompt('请输入记事本标题：');
-                if (!title) return;
-                const newItem = { id: genId(), title: title, content: '', createdAt: Date.now(), updatedAt: Date.now() };
+                newItem.content = '';
+                newItem.createdAt = Date.now();
+                newItem.updatedAt = Date.now();
                 appData.notes.unshift(newItem);
-                renderList();
-                openItem(newItem.id);
-                await immediateSave();
             }
+            renderList();
+            openItem(newItem.id);
+            await immediateSave();
         }
 
         async function deleteItem(id, event) {
