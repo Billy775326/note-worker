@@ -92,7 +92,7 @@ test('missing secrets and missing limiter fail closed; rate limit returns 429', 
 });
 test('save/read roundtrip, invalid schema cannot overwrite data', async () => {
   const env = environment(); const cookie = await login(env);
-  const data = { notes: [{ id: 'note1', title: '标题', content: '内容' }], novels: [] };
+  const data = { notes: [{ id: 'note1', title: '标题', content: '内容', pinned: true, createdAt: 1700000000000, updatedAt: 1700000000001 }], novels: [] };
   assert.equal((await worker.fetch(request('/api/save-data', { method: 'POST', cookie, body: data }), env)).status, 200);
   for (const body of [{}, { notes: [{ id: "' onclick='", title: 'x', content: '' }], novels: [] }]) {
     assert.equal((await worker.fetch(request('/api/save-data', { method: 'POST', cookie, body }), env)).status, 400);

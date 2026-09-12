@@ -298,6 +298,18 @@ const htmlContent = `
         .item-actions { display: flex; justify-content: flex-end; gap: 5px; margin-top: 6px; }
         .item-actions button { padding: 2px 5px; font-size: 10px; font-weight: normal; color: var(--text-muted); }
         .list-empty { padding: 28px 12px; text-align: center; color: var(--text-muted); font-size: 12px; line-height: 2; }
+        .pin-badge { flex-shrink: 0; font-size: 10px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); padding: 1px 5px; border-radius: 4px; }
+        .drag-handle { flex-shrink: 0; cursor: grab; color: var(--text-muted); padding: 0 1px; font-size: 13px; opacity: .5; user-select: none; }
+        .drag-handle:hover { opacity: 1; }
+        .list-item.drag-over { border: 1px dashed var(--accent); }
+        .list-item.selected { background: var(--soft); border-color: color-mix(in srgb, var(--accent) 30%, var(--soft)); }
+        .item-check { width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
+        .batch-bar { flex-wrap: wrap; align-items: center; gap: 5px; margin: 0 12px 8px; padding: 7px 9px; background: var(--soft); border-radius: 9px; font-size: 11px; }
+        .batch-bar .count { margin-right: auto; color: var(--text-muted); }
+        .batch-bar button { padding: 3px 8px; font-size: 11px; font-weight: normal; }
+        .sort-bar { padding: 0 12px 8px; }
+        #note-sort { width: 100%; padding: 6px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); color: var(--text-main); font-size: 12px; }
+        .item-meta { font-size: 10px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; }
         .add-btn-container { padding: 17px 20px; border-top: 1px solid var(--border); display: flex; }
         .add-btn-container button { width: 100%; background: transparent; color: var(--accent); border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); font-size: 12px; font-weight: 500; }
         .add-btn-container button:hover { background: var(--soft); }
@@ -503,12 +515,31 @@ const htmlContent = `
         <div class="main-container">
             <button class="sidebar-scrim" id="sidebar-scrim" onclick="closeSidebar()" aria-label="关闭作品列表" tabindex="-1"></button>
             <aside class="sidebar" id="main-sidebar" aria-label="作品列表">
-                <div class="sidebar-heading"><strong>我的作品</strong><span id="item-count">0 篇</span></div>
+                <div class="sidebar-heading"><strong>我的作品</strong><span style="display:flex;align-items:center;gap:6px;"><span id="item-count">0 篇</span><button class="btn-text" id="batch-toggle-btn" onclick="toggleBatchMode()" style="display:none;padding:2px 7px;font-size:10px;">批量管理</button></span></div>
                 <div class="tabs">
                     <button class="tab active" id="tab-note" onclick="switchTab('note')" aria-pressed="true">随手记</button>
                     <button class="tab" id="tab-novel" onclick="switchTab('novel')" aria-pressed="false">故事集</button>
                 </div>
-                <label class="search-box"><span aria-hidden="true">⌕</span><input type="search" id="list-search" aria-label="搜索作品标题和正文" placeholder="搜索标题或正文…" oninput="renderList()"></label>
+                <label class="search-box" id="search-box-wrap"><span aria-hidden="true">⌕</span><input type="search" id="list-search" aria-label="搜索作品标题和正文" placeholder="搜索标题或正文…" oninput="renderList()"></label>
+                <div class="sort-bar" id="note-sort-bar">
+                    <select id="note-sort" aria-label="随手记排序方式" onchange="changeNoteSort(this.value)">
+                        <option value="modified">按修改时间（新 → 旧）</option>
+                        <option value="modified-asc">按修改时间（旧 → 新）</option>
+                        <option value="created">按创建时间（新 → 旧）</option>
+                        <option value="created-asc">按创建时间（旧 → 新）</option>
+                        <option value="title">按标题（A → Z）</option>
+                        <option value="title-desc">按标题（Z → A）</option>
+                        <option value="manual">手动排序（置顶优先 · 可拖拽）</option>
+                    </select>
+                </div>
+                <div class="batch-bar" id="batch-bar" style="display:none;">
+                    <span class="count" id="batch-count">已选 0 篇</span>
+                    <button class="btn-text" onclick="batchSelectAll()">全选</button>
+                    <button class="btn-text" onclick="batchPin(true)">置顶</button>
+                    <button class="btn-text" onclick="batchPin(false)">取消置顶</button>
+                    <button class="btn-text btn-danger" onclick="batchDelete()">删除</button>
+                    <button class="btn-text" onclick="toggleBatchMode(false)">完成</button>
+                </div>
                 <div class="list-container" id="list-container"></div>
                 <div class="add-btn-container">
                     <button onclick="createNewItem()">＋ 写下新的灵感</button>
@@ -790,6 +821,7 @@ const htmlContent = `
             if (!dataLoaded) {
                 if (!await loadDataFromServer()) throw new Error('加载云端数据失败，请重试登录');
                 dataLoaded = true;
+                if (migrateNoteTimes()) saveDataToServer();
                 document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
                 document.getElementById('tab-note').classList.add('active');
                 currentTab = 'note';
@@ -927,6 +959,7 @@ const htmlContent = `
 
         function autoSave() {
             syncCurrentFields();
+            touchActiveNote();
             updateWordCount();
             document.getElementById('save-status').innerText = '✍️ 正在输入...';
             clearTimeout(saveTimeout);
@@ -948,6 +981,7 @@ const htmlContent = `
 
         function switchTab(tab) {
             document.getElementById('list-search').value = '';
+            if (batchMode) toggleBatchMode(false);
             currentTab = tab;
             document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
             if(tab === 'novel') {
@@ -961,15 +995,138 @@ const htmlContent = `
             renderList();
         }
 
+        // ================= 随手记：时间戳 / 置顶 / 排序 / 批量管理 =================
+        let batchMode = false;
+        let dragNoteId = null;
+        const batchSelected = new Set();
+        const NOTE_SORTERS = {
+            'modified': (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
+            'modified-asc': (a, b) => (a.updatedAt || 0) - (b.updatedAt || 0),
+            'created': (a, b) => (b.createdAt || 0) - (a.createdAt || 0),
+            'created-asc': (a, b) => (a.createdAt || 0) - (b.createdAt || 0),
+            'title': (a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'zh-Hans-CN'),
+            'title-desc': (a, b) => String(b.title || '').localeCompare(String(a.title || ''), 'zh-Hans-CN'),
+            'manual': () => 0
+        };
+        let noteSort = localStorage.getItem('cloud_note_sort');
+        if (!NOTE_SORTERS[noteSort]) noteSort = 'modified';
+        function migrateNoteTimes() {
+            let changed = false;
+            const now = Date.now();
+            (appData.notes || []).forEach(n => {
+                if (!Number(n.createdAt)) { n.createdAt = now; changed = true; }
+                if (!Number(n.updatedAt)) { n.updatedAt = Number(n.createdAt); changed = true; }
+            });
+            return changed;
+        }
+        function touchActiveNote() {
+            if (currentTab !== 'note' || !activeNoteId) return;
+            const note = appData.notes.find(n => n.id === activeNoteId);
+            if (note) note.updatedAt = Date.now();
+        }
+        function formatStamp(ms) {
+            if (!ms) return '—';
+            const d = new Date(ms), now = new Date();
+            const pad = v => String(v).padStart(2, '0');
+            return (d.getFullYear() === now.getFullYear() ? '' : d.getFullYear() + '-') + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+        }
+        function changeNoteSort(value) {
+            noteSort = NOTE_SORTERS[value] ? value : 'modified';
+            localStorage.setItem('cloud_note_sort', noteSort);
+            document.getElementById('note-sort').value = noteSort;
+            renderList();
+        }
+        function toggleBatchMode(force) {
+            batchMode = force === undefined ? !batchMode : force;
+            if (!batchMode) batchSelected.clear();
+            document.getElementById('search-box-wrap').style.display = batchMode ? 'none' : '';
+            document.getElementById('batch-bar').style.display = batchMode ? 'flex' : 'none';
+            updateBatchCount();
+            renderList();
+        }
+        function updateBatchCount() {
+            const el = document.getElementById('batch-count');
+            if (el) el.textContent = '已选 ' + batchSelected.size + ' 篇';
+        }
+        function toggleBatchItem(id, checked) {
+            if (checked) batchSelected.add(id); else batchSelected.delete(id);
+            updateBatchCount();
+        }
+        function batchSelectAll() {
+            appData.notes.forEach(n => batchSelected.add(n.id));
+            updateBatchCount();
+            renderList();
+        }
+        async function batchPin(pinned) {
+            if (!batchSelected.size) return;
+            applyPinState([...batchSelected], pinned);
+            renderList();
+            await immediateSave();
+        }
+        async function batchDelete() {
+            if (!batchSelected.size) return;
+            if (!confirm('确定要删除选中的 ' + batchSelected.size + ' 篇吗？数据将从云端永久抹去！')) return;
+            const doomed = new Set(batchSelected);
+            appData.notes = appData.notes.filter(n => !doomed.has(n.id));
+            if (activeNoteId && doomed.has(activeNoteId) && !appData.notes.some(n => n.id === activeNoteId)) {
+                activeNoteId = null;
+                document.getElementById('editor-area').style.display = 'none';
+                document.getElementById('empty-state').style.display = 'flex';
+            }
+            batchSelected.clear();
+            updateBatchCount();
+            renderList();
+            await immediateSave();
+        }
+        function applyPinState(ids, pinned) {
+            const moved = appData.notes.filter(n => ids.includes(n.id));
+            moved.forEach(n => { if (pinned) n.pinned = true; else delete n.pinned; });
+            const rest = appData.notes.filter(n => !ids.includes(n.id));
+            appData.notes = pinned
+                ? [...moved, ...rest.filter(n => n.pinned), ...rest.filter(n => !n.pinned)]
+                : [...rest.filter(n => n.pinned), ...moved, ...rest.filter(n => !n.pinned)];
+        }
+        async function toggleNotePin(id) {
+            const note = appData.notes.find(n => n.id === id);
+            if (!note) return;
+            applyPinState([id], !note.pinned);
+            renderList();
+            await immediateSave();
+        }
+        function reorderNote(dragId, dropId) {
+            const arr = appData.notes;
+            const from = arr.findIndex(n => n.id === dragId), to = arr.findIndex(n => n.id === dropId);
+            if (from < 0 || to < 0 || from === to) return;
+            const [moved] = arr.splice(from, 1);
+            arr.splice(to, 0, moved);
+        }
+        function moveNote(id, dir) {
+            const arr = appData.notes;
+            const idx = arr.findIndex(n => n.id === id);
+            if (idx < 0) return;
+            let j = idx + dir;
+            while (j >= 0 && j < arr.length && !!arr[j].pinned !== !!arr[idx].pinned) j += dir;
+            if (j < 0 || j >= arr.length) return;
+            [arr[idx], arr[j]] = [arr[j], arr[idx]];
+            renderList();
+            autoSave();
+        }
         function renderList() {
             const container = document.getElementById('list-container');
             container.innerHTML = '';
-            const list = currentTab === 'novel' ? appData.novels : appData.notes;
+            const isNote = currentTab === 'note';
+            const list = isNote ? appData.notes : appData.novels;
             const query = document.getElementById('list-search').value.trim().toLocaleLowerCase();
-            const visible = list.filter(item => !query || (item.title + ' ' + itemText(item)).toLocaleLowerCase().includes(query));
+            let visible = list.filter(item => !query || (item.title + ' ' + itemText(item)).toLocaleLowerCase().includes(query));
+            const batching = batchMode && isNote;
+            if (isNote) visible.sort((a, b) => (!!b.pinned - !!a.pinned) || NOTE_SORTERS[noteSort](a, b));
             document.getElementById('item-count').textContent = list.length + ' 篇';
-            document.getElementById('tab-note').setAttribute('aria-pressed', currentTab === 'note');
+            document.getElementById('tab-note').setAttribute('aria-pressed', isNote);
             document.getElementById('tab-novel').setAttribute('aria-pressed', currentTab === 'novel');
+            document.getElementById('batch-toggle-btn').style.display = isNote && !batchMode ? '' : 'none';
+            document.getElementById('note-sort-bar').style.display = isNote ? '' : 'none';
+            const sortSelect = document.getElementById('note-sort');
+            if (sortSelect.value !== noteSort) sortSelect.value = noteSort;
             if (!visible.length) {
                 const empty = document.createElement('p'); empty.className = 'list-empty';
                 empty.textContent = query ? '没有找到匹配的作品，换个关键词试试。' : '这里还很安静，写下第一篇吧。';
@@ -977,40 +1134,90 @@ const htmlContent = `
             }
             visible.forEach(item => {
                 const div = document.createElement('div');
-                div.className = 'list-item' + ((currentTab === 'note' ? activeNoteId : activeNovelId) === item.id ? ' active' : '');
+                div.className = 'list-item' + ((isNote ? activeNoteId : activeNovelId) === item.id ? ' active' : '') + (batchSelected.has(item.id) ? ' selected' : '');
                 div.tabIndex = 0;
-                div.setAttribute('aria-label', '打开：' + (item.title || '未命名'));
-                div.onkeydown = e => { if (e.target === div && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openItem(item.id); } };
-                
+                div.setAttribute('aria-label', (batching ? '选择：' : '打开：') + (item.title || '未命名') + (item.pinned ? '（置顶）' : ''));
+                const activate = () => batching ? toggleBatchItem(item.id, !batchSelected.has(item.id)) : openItem(item.id);
+                div.onkeydown = e => { if (e.target === div && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); div.click(); } };
                 const infoDiv = document.createElement('div');
                 infoDiv.className = 'item-info';
+                if (batching) {
+                    const check = document.createElement('input');
+                    check.type = 'checkbox'; check.className = 'item-check';
+                    check.checked = batchSelected.has(item.id);
+                    check.setAttribute('aria-label', '选中：' + (item.title || '未命名'));
+                    check.onclick = e => e.stopPropagation();
+                    check.onchange = () => toggleBatchItem(item.id, check.checked);
+                    infoDiv.appendChild(check);
+                }
                 const tagStr = (currentTab === 'novel' && item.type === 'short') ? ' <span style="font-size:11px; background:rgba(64,158,255,0.15); color:var(--accent); padding:1px 4px; border-radius:3px;">短篇</span>' : '';
-                infoDiv.innerHTML = '<span class="item-title">' + escapeHtml(item.title || '未命名') + tagStr + '</span>';
-                
+                infoDiv.innerHTML = '<span class="item-title">' + escapeHtml(item.title || '未命名') + tagStr + '</span>' + (isNote && item.pinned ? '<span class="pin-badge">置顶</span>' : '');
+                if (isNote && !batching && noteSort === 'manual') {
+                    const handle = document.createElement('span');
+                    handle.className = 'drag-handle'; handle.textContent = '⠿'; handle.title = '拖动排序';
+                    handle.setAttribute('aria-hidden', 'true');
+                    handle.ondragstart = e => { dragNoteId = item.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', item.id); } catch {} };
+                    handle.ondragend = () => { dragNoteId = null; container.querySelectorAll('.drag-over,.dragging').forEach(el => el.classList.remove('drag-over', 'dragging')); };
+                    infoDiv.appendChild(handle);
+                    div.ondragover = e => {
+                        const src = appData.notes.find(n => n.id === dragNoteId);
+                        if (!src || dragNoteId === item.id || !!src.pinned !== !!item.pinned) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        div.classList.add('drag-over');
+                    };
+                    div.ondragleave = () => div.classList.remove('drag-over');
+                    div.ondrop = e => {
+                        e.preventDefault();
+                        div.classList.remove('drag-over');
+                        if (dragNoteId && dragNoteId !== item.id) { reorderNote(dragNoteId, item.id); renderList(); autoSave(); }
+                    };
+                }
                 const actionsDiv = document.createElement('div');
                 actionsDiv.className = 'item-actions';
-                
+                if (batching && noteSort === 'manual') {
+                    const up = document.createElement('button');
+                    up.className = 'btn-text'; up.innerText = '↑'; up.title = '上移'; up.setAttribute('aria-label', '上移：' + (item.title || '未命名'));
+                    up.onclick = e => { e.stopPropagation(); moveNote(item.id, -1); };
+                    const down = document.createElement('button');
+                    down.className = 'btn-text'; down.innerText = '↓'; down.title = '下移'; down.setAttribute('aria-label', '下移：' + (item.title || '未命名'));
+                    down.onclick = e => { e.stopPropagation(); moveNote(item.id, 1); };
+                    actionsDiv.appendChild(up);
+                    actionsDiv.appendChild(down);
+                } else if (isNote && !batching) {
+                    const pinBtn = document.createElement('button');
+                    pinBtn.className = 'btn-text';
+                    pinBtn.innerText = item.pinned ? '取消置顶' : '置顶';
+                    pinBtn.onclick = e => { e.stopPropagation(); toggleNotePin(item.id); };
+                    actionsDiv.appendChild(pinBtn);
+                }
                 const renameBtn = document.createElement('button');
                 renameBtn.className = 'btn-text';
                 renameBtn.innerText = '改名';
-                renameBtn.onclick = (e) => renameItem(item.id, e);
-                
+                renameBtn.onclick = e => renameItem(item.id, e);
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-text btn-danger';
                 deleteBtn.style.padding = '2px 6px';
                 deleteBtn.innerText = '删除';
-                deleteBtn.onclick = (e) => deleteItem(item.id, e);
-                
+                deleteBtn.onclick = e => deleteItem(item.id, e);
                 actionsDiv.appendChild(renameBtn);
                 actionsDiv.appendChild(deleteBtn);
-                
                 div.appendChild(infoDiv);
+                if (isNote) {
+                    const meta = document.createElement('div');
+                    meta.className = 'item-meta';
+                    meta.textContent = '修改 ' + formatStamp(item.updatedAt) + ' · 创建 ' + formatStamp(item.createdAt);
+                    div.appendChild(meta);
+                }
                 const preview = document.createElement('div'); preview.className = 'item-preview';
                 preview.textContent = itemText(item).replace(/\\s+/g, ' ').slice(0, 70) || '还没有正文，等待你的第一句话。';
                 div.appendChild(preview);
                 div.appendChild(actionsDiv);
-                
-                div.onclick = () => openItem(item.id);
+                div.onclick = () => {
+                    const on = !batchSelected.has(item.id);
+                    activate();
+                    if (batching) { div.classList.toggle('selected', on); const check = infoDiv.querySelector('.item-check'); if (check) check.checked = on; }
+                };
                 container.appendChild(div);
             });
         }
@@ -1024,6 +1231,7 @@ const htmlContent = `
             const newTitle = prompt(currentTab === 'novel' ? '请输入新的小说书名：' : '请输入新的记事本标题：', item.title);
             if (newTitle && newTitle.trim() !== "") {
                 item.title = newTitle.trim();
+                if (currentTab === 'note') item.updatedAt = Date.now();
                 if (currentTab === 'note' && activeNoteId === id) {
                     document.getElementById('note-title').value = item.title;
                 }
@@ -1059,7 +1267,7 @@ const htmlContent = `
             } else {
                 const title = prompt('请输入记事本标题：');
                 if (!title) return;
-                const newItem = { id: genId(), title: title, content: '' };
+                const newItem = { id: genId(), title: title, content: '', createdAt: Date.now(), updatedAt: Date.now() };
                 appData.notes.unshift(newItem);
                 renderList();
                 openItem(newItem.id);
