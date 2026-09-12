@@ -20,8 +20,14 @@ function loginPath(env) {
   const value = typeof env.login === 'string' ? env.login.trim().replace(/^\/+|\/+$/g, '') : '';
   return /^[A-Za-z0-9][A-Za-z0-9_-]{2,127}$/.test(value) && !['api', 'robots.txt'].includes(value) ? '/' + value : null;
 }
-function authConfigured(env) {
-  return /^[a-f0-9]{32}$/i.test(env.PASSWORD_HASH || '') && typeof env.PASSWORD_SALT === 'string' && env.PASSWORD_SALT.length >= 16 && typeof env.SESSION_SECRET === 'string' && env.SESSION_SECRET.length >= 32 && env.CLOUD_EDITOR_KV;
+function missingConfig(env) {
+  return [
+    [/^[a-f0-9]{32}$/i.test(env.PASSWORD_HASH || ''), 'PASSWORD_HASH（须为 32 位十六进制加盐 MD5，不是密码原文）'],
+    [typeof env.PASSWORD_SALT === 'string' && env.PASSWORD_SALT.length >= 16, 'PASSWORD_SALT（至少 16 字符）'],
+    [typeof env.SESSION_SECRET === 'string' && env.SESSION_SECRET.length >= 32, 'SESSION_SECRET（至少 32 字符）'],
+    [!!env.CLOUD_EDITOR_KV, 'CLOUD_EDITOR_KV（Settings → Bindings 里的 KV 绑定）'],
+    [!!env.LOGIN_RATE_LIMITER, 'LOGIN_RATE_LIMITER（登录限流绑定）'],
+  ].filter(([ok]) => !ok).map(([, label]) => label);
 }
 function pageResponse(content, privatePage = false) {
   return new Response(content, { headers: {
@@ -114,9 +120,9 @@ export default {
       url.pathname = url.pathname.slice(entrance.length);
       if (!url.pathname.startsWith('/api/')) return json({ error: 'Not Found' }, 404);
       if (request.method === 'POST' && (request.headers.get('Origin') !== url.origin || request.headers.get('X-Requested-With') !== 'note-editor')) return json({ error: '请求来源无效' }, 403);
-      if (!authConfigured(env)) return json({ error: '请配置 KV 和登录 Secrets' }, 503);
+      const missing = missingConfig(env);
+      if (missing.length) return json({ error: '服务配置不完整，缺少：' + missing.join('；') }, 503);
       if (url.pathname === '/api/login' && request.method === 'POST') {
-        if (!env.LOGIN_RATE_LIMITER) return json({ error: '请配置登录限流绑定' }, 503);
         const { success } = await env.LOGIN_RATE_LIMITER.limit({ key: request.headers.get('CF-Connecting-IP') || 'local' });
         if (!success) return json({ error: '尝试次数过多，请稍后重试' }, 429, { 'Retry-After': '60' });
         const body = await readJson(request, 4096);

@@ -80,9 +80,13 @@ test('cross-origin and missing CSRF headers rejected', async () => {
 test('missing secrets and missing limiter fail closed; rate limit returns 429', async () => {
   const env = environment();
   const req = () => request('/api/login', { method: 'POST', body: { password } });
-  assert.equal((await worker.fetch(req(), { login: 'private-notes' })).status, 503);
+  const bare = await worker.fetch(req(), { login: 'private-notes' });
+  assert.equal(bare.status, 503);
+  assert.match((await bare.json()).error, /PASSWORD_HASH.*PASSWORD_SALT.*SESSION_SECRET.*CLOUD_EDITOR_KV.*LOGIN_RATE_LIMITER/);
   env.LOGIN_RATE_LIMITER = undefined;
-  assert.equal((await worker.fetch(req(), env)).status, 503);
+  const limiterMissing = await (await worker.fetch(req(), env)).json();
+  assert.match(limiterMissing.error, /缺少：.*LOGIN_RATE_LIMITER（登录限流绑定）/);
+  assert.doesNotMatch(limiterMissing.error, /PASSWORD_HASH/);
   env.LOGIN_RATE_LIMITER = { limit: async () => ({ success: false }) };
   assert.equal((await worker.fetch(req(), env)).status, 429);
 });

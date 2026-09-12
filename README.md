@@ -77,7 +77,7 @@ $salt = '粘贴现有 PASSWORD_SALT'; $pwd = Read-Host '新密码'
 1. **创建 Worker 并粘贴代码**：Workers & Pages → Create → Create Worker，名称如 `note`；进入在线编辑器，清空模板代码，粘贴 `worker.js` 全部内容，Deploy。
 2. **创建 KV**：Storage & Databases → KV → Create namespace，名称任意（如 `note-data`）。升级旧项目必须选择原来的 namespace。
 3. **绑定 KV**：Worker → Settings → Bindings → Add → KV namespace，变量名称填 `CLOUD_EDITOR_KV`，选择上一步的 namespace。
-4. **绑定登录限流**：同页 Add → Rate limiting，变量名称 `LOGIN_RATE_LIMITER`，namespace ID 填账号内未占用的正整数（如 `1001`），限制 5 次 / 60 秒。若绑定列表没有 Rate limiting 类型，该绑定只能通过命令行方式完成（`wrangler.jsonc` 已配置）。
+4. **绑定登录限流（必需）**：同页 Add → Rate limiting，变量名称 `LOGIN_RATE_LIMITER`，namespace ID 填账号内未占用的正整数（如 `1001`），限制 5 次 / 60 秒。**这项必须配置，跳过将无法登录**。若绑定列表没有 Rate limiting 类型，该绑定只能通过命令行方式完成（`wrangler.jsonc` 已配置）。
 5. **添加 Secrets**：Settings → Variables and Secrets → Add，类型选 Secret，逐个添加（生成随机十六进制的命令见表格下方）：
 
    | 名称 | 填写内容 | 对应作用 |
@@ -96,6 +96,8 @@ $salt = '粘贴现有 PASSWORD_SALT'; $pwd = Read-Host '新密码'
 7. **验证**：打开 `https://<Worker 名称>.<账户子域>.workers.dev/<login>`，依次验证登录、保存、刷新恢复、历史回滚；未登录请求 `/<login>/api/get-data` 应返回 401。
 
 以后更新：在线编辑器里重新粘贴新的 `worker.js` 保存即可，Secrets 和绑定不受影响。
+
+> 登录时若提示「服务配置不完整，缺少：…」，冒号后面就是要补的清单——逐项到 Settings → Bindings / Variables and Secrets 里补齐即可，补完立即生效，无需重新部署。
 
 ## 会话与数据
 
