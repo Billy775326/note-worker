@@ -319,6 +319,11 @@ const htmlContent = `
         .toolbar-btn:hover { border-color: var(--accent); color: var(--accent); }
         .item-created { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
         .item-modified { font-size: 10px; color: var(--text-muted); margin-right: auto; align-self: center; }
+        #toast-box { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 999; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+        .toast { background: var(--bg-primary); color: var(--text-main); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 9px; padding: 10px 16px; font-size: 12px; box-shadow: var(--shadow); animation: toast-in .25s ease; max-width: min(460px, calc(100vw - 40px)); pointer-events: auto; }
+        .toast-error { border-left-color: var(--danger); }
+        .toast-out { opacity: 0; transform: translateY(-8px); transition: opacity .3s, transform .3s; }
+        @keyframes toast-in { from { opacity: 0; transform: translateY(-10px); } }
         .add-btn-container { padding: 17px 20px; border-top: 1px solid var(--border); display: flex; }
         .add-btn-container button { width: 100%; background: transparent; color: var(--accent); border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); font-size: 12px; font-weight: 500; }
         .add-btn-container button:hover { background: var(--soft); }
@@ -380,6 +385,7 @@ const htmlContent = `
         .table-dialog .create-type-option { justify-content: flex-start; gap: 8px; margin: 0; font-size: 13px; }
         .table-dialog .create-type-option input { width: auto; }
         #create-title-input { margin-top: 14px; }
+        #rename-input { margin-top: 14px; }
         .history-list { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 48px; max-height: 50vh; }
         .history-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); font-size: 12px; }
         .history-item strong { font-size: 13px; }
@@ -667,15 +673,27 @@ const htmlContent = `
 
     <dialog id="create-dialog" class="table-dialog" aria-labelledby="create-dialog-title">
         <h3 id="create-dialog-title">新建记事本</h3>
-        <div id="create-type-row" style="display:none; flex-direction: column; gap: 10px; margin-top: 14px;">
-            <label class="create-type-option"><input type="radio" name="new-novel-type" value="long" checked>长篇连载（分卷分章）</label>
-            <label class="create-type-option"><input type="radio" name="new-novel-type" value="short">短篇小说（单篇正文）</label>
-        </div>
-        <input type="text" id="create-title-input" placeholder="标题" maxlength="100" style="width: 100%;" oninput="onCreateTitleInput()" onkeydown="if (event.key === 'Enter') confirmCreate()">
-        <div class="dialog-actions">
-            <button type="button" class="btn-text" onclick="closeCreateDialog()">取消</button>
-            <button type="button" id="create-confirm-btn" onclick="confirmCreate()" disabled>创建</button>
-        </div>
+        <form method="dialog" onsubmit="return handleCreateSubmit(event)">
+            <div id="create-type-row" style="display:none; flex-direction: column; gap: 10px; margin-top: 14px;">
+                <label class="create-type-option"><input type="radio" name="new-novel-type" value="long" checked>长篇连载（分卷分章）</label>
+                <label class="create-type-option"><input type="radio" name="new-novel-type" value="short">短篇小说（单篇正文）</label>
+            </div>
+            <input type="text" id="create-title-input" placeholder="标题" maxlength="100" style="width: 100%;" oninput="onCreateTitleInput()">
+            <div class="dialog-actions">
+                <button type="button" class="btn-text" onclick="closeCreateDialog()">取消</button>
+                <button type="submit" id="create-confirm-btn" disabled>创建</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="rename-dialog" class="table-dialog" aria-labelledby="rename-dialog-title">
+        <h3 id="rename-dialog-title">重命名</h3>
+        <form method="dialog" onsubmit="return handleRenameSubmit(event)">
+            <input type="text" id="rename-input" placeholder="新标题" maxlength="100" style="width: 100%;">
+            <div class="dialog-actions">
+                <button type="button" class="btn-text" onclick="document.getElementById('rename-dialog').close()">取消</button>
+                <button type="submit" id="rename-confirm-btn">确定</button>
+            </div>
+        </form>
     </dialog>
     <dialog id="table-dialog" class="table-dialog" aria-labelledby="table-dialog-title">
         <form onsubmit="insertNoteTable(event)">
@@ -686,8 +704,8 @@ const htmlContent = `
         </form>
     </dialog>
     <dialog id="history-dialog" class="table-dialog history-dialog" aria-labelledby="history-dialog-title">
-        <h3 id="history-dialog-title">修改历史</h3>
-        <p>内容变化并保存后自动留存快照：自动保存约 10 分钟合并一份，手动保存和回滚前会强制留存；最多保留 10 份。回滚后可再次打开此窗口选择最近版本撤销。</p>
+        <h3 id="history-dialog-title">本文修改历史</h3>
+        <p>按当前打开的文章独立展示：只列出这篇文章实际发生变化的版本（底层快照自动保存约 10 分钟合并一份，最多 10 份）。回滚仅影响这一篇文章，当前内容会先自动留存，可再次回滚撤销。</p>
         <div id="history-list" class="history-list" aria-live="polite"></div>
         <div class="dialog-actions"><button type="button" onclick="document.getElementById('history-dialog').close()">关闭</button></div>
     </dialog>
@@ -752,48 +770,77 @@ const htmlContent = `
             document.body.appendChild(link); link.click(); link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
+        let historyNoteId = null;
         async function openHistoryDialog() {
             const list = document.getElementById('history-list');
             const dialog = document.getElementById('history-dialog');
+            historyNoteId = activeNoteId;
+            const note = appData.notes.find(n => n.id === historyNoteId);
+            if (!note) { showToast('请先打开一篇文章再查看历史', 'error'); return; }
             list.innerHTML = '<div class="history-item">正在加载历史版本…</div>';
             dialog.showModal();
             try {
                 const res = await apiFetch('/api/history');
                 if (!res.ok) throw new Error('加载失败');
                 const items = (await res.json()).items || [];
-                list.innerHTML = '';
                 if (!items.length) { list.innerHTML = '<div class="history-item">暂无历史版本。内容发生变化并保存后会自动留存快照。</div>'; return; }
-                for (const item of items) {
+                const versions = (await Promise.all(items.map(async item => {
+                    const r = await apiFetch('/api/history-item?ts=' + encodeURIComponent(item.ts));
+                    if (!r.ok) return null;
+                    const snap = await r.json();
+                    const snapNote = (Array.isArray(snap.notes) ? snap.notes : []).find(n => n.id === historyNoteId);
+                    return snapNote ? { ts: item.ts, title: snapNote.title || '未命名', content: snapNote.content || '' } : null;
+                }))).filter(Boolean);
+                const filtered = [];
+                versions.forEach(v => {
+                    const prev = filtered[filtered.length - 1];
+                    if (prev && prev.title === v.title && prev.content === v.content) return;
+                    filtered.push(v);
+                });
+                list.innerHTML = '';
+                if (!filtered.length) { list.innerHTML = '<div class="history-item">现存快照里没有这篇文章的版本（快照留存时它可能还不存在）。</div>'; return; }
+                filtered.forEach(v => {
                     const row = document.createElement('div'); row.className = 'history-item';
                     const meta = document.createElement('div'); meta.className = 'history-meta';
                     const time = document.createElement('strong');
-                    time.textContent = new Date(item.ts).toLocaleString('zh-CN', { hour12: false });
-                    const size = document.createElement('span'); size.className = 'history-size';
-                    size.textContent = item.size > 1048576 ? '约 ' + (item.size / 1048576).toFixed(1) + ' MB' : '约 ' + Math.max(1, Math.round(item.size / 1024)) + ' KB';
-                    const rollback = document.createElement('button'); rollback.className = 'btn-text'; rollback.textContent = '回滚到此版本';
-                    rollback.onclick = () => rollbackToVersion(item.ts);
-                    meta.append(time, size); row.append(meta, rollback); list.appendChild(row);
-                }
+                    time.textContent = new Date(v.ts).toLocaleString('zh-CN', { hour12: false });
+                    const preview = document.createElement('span'); preview.className = 'history-size';
+                    preview.textContent = v.title + ' · ' + v.content.replace(/\\s+/g, '').length.toLocaleString() + ' 字';
+                    const rollback = document.createElement('button'); rollback.className = 'btn-text'; rollback.textContent = '回滚此篇';
+                    rollback.onclick = () => rollbackNoteVersion(v);
+                    meta.append(time, preview); row.append(meta, rollback); list.appendChild(row);
+                });
             } catch { list.innerHTML = '<div class="history-item">历史版本加载失败，请关闭后重试。</div>'; }
         }
-        async function rollbackToVersion(ts) {
-            if (!confirm('回滚会用所选版本覆盖当前全部笔记和小说，当前内容会先自动留存一份（可在「历史」里再次回滚撤销）。确定继续吗？')) return;
-            try {
-                const res = await apiFetch('/api/history-item?ts=' + encodeURIComponent(ts));
-                if (!res.ok) throw new Error('加载失败');
-                const snapshot = await res.json();
-                if (!snapshot || !Array.isArray(snapshot.notes) || !Array.isArray(snapshot.novels)) throw new Error('快照不完整');
-                syncCurrentFields();
-                appData = snapshot;
-                if (!await saveDataToServer('?history=force')) throw new Error('保存失败');
-                document.getElementById('history-dialog').close();
-                activeNoteId = activeNovelId = activeVolumeId = activeChapterId = null;
-                switchTab(currentTab);
-                alert('已回滚。如需撤销，请打开「历史」选择最近的版本再次回滚。');
-            } catch { alert('回滚失败，请稍后重试。'); }
+        async function rollbackNoteVersion(version) {
+            if (!confirm('将当前文章的标题和正文回滚到所选版本？当前内容会先自动留存，可在「历史」里撤销。')) return;
+            const note = appData.notes.find(n => n.id === historyNoteId);
+            if (!note) { showToast('文章不存在或已删除', 'error'); document.getElementById('history-dialog').close(); return; }
+            note.title = version.title;
+            note.content = version.content;
+            note.updatedAt = Date.now();
+            if (activeNoteId === historyNoteId) {
+                document.getElementById('note-title').value = note.title;
+                document.getElementById('note-content').value = note.content;
+                scheduleNotePreview();
+                updateWordCount();
+            }
+            renderList();
+            document.getElementById('history-dialog').close();
+            if (await immediateSave()) showToast('已回滚此篇。如需撤销，请再次打开「历史」选择最近的版本。');
+            else showToast('本地已回滚，但同步云端失败，请检查网络后手动保存', 'error');
         }
 
         const genId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
+        function showToast(message, type) {
+            let box = document.getElementById('toast-box');
+            if (!box) { box = document.createElement('div'); box.id = 'toast-box'; document.body.appendChild(box); }
+            const toast = document.createElement('div');
+            toast.className = 'toast' + (type === 'error' ? ' toast-error' : '');
+            toast.textContent = message;
+            box.appendChild(toast);
+            setTimeout(() => { toast.classList.add('toast-out'); setTimeout(() => toast.remove(), 350); }, 2800);
+        }
 
         function escapeHtml(value) {
             return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
@@ -866,12 +913,12 @@ const htmlContent = `
         async function logout() {
             if (!confirm('保存当前内容并退出登录？')) return;
             syncCurrentFields(); clearTimeout(saveTimeout);
-            if (dataLoaded && !await saveDataToServer()) { alert('保存失败，请重试后退出'); return; }
+            if (dataLoaded && !await saveDataToServer()) { showToast('保存失败，请重试后退出', 'error'); return; }
             try {
                 const res = await apiFetch('/api/logout', { method: 'POST' });
                 if (!res.ok) throw new Error('退出失败');
                 window.location.reload();
-            } catch { alert('退出失败，请检查网络后重试'); }
+            } catch { showToast('退出失败，请检查网络后重试', 'error'); }
         }
 
         const noteTypographyOptions = {
@@ -915,11 +962,11 @@ const htmlContent = `
                     if(!appData.notes) appData.notes = [];
                     return true;
                 } else {
-                    alert('拉取云端数据失败，请检查密码或KV绑定');
+                    showToast('拉取云端数据失败，请检查密码或KV绑定', 'error');
                 }
             } catch (e) {
                 console.error(e);
-                alert('网络错误，无法连接到云端');
+                showToast('网络错误，无法连接到云端', 'error');
             } finally {
                 document.getElementById('loading-overlay').style.display = 'none';
             }
@@ -955,9 +1002,9 @@ const htmlContent = `
             clearTimeout(saveTimeout);
             const success = await saveDataToServer('?history=force');
             if (success) {
-                alert('💾 云端数据保存成功！');
+                showToast('💾 云端数据保存成功！');
             } else {
-                alert('❌ 保存失败，请检查网络连接。');
+                showToast('❌ 保存失败，请检查网络连接。', 'error');
             }
         }
 
@@ -1152,7 +1199,7 @@ const htmlContent = `
         }
         async function batchMerge() {
             const picked = orderedSelectedNotes();
-            if (picked.length < 2) { alert('请至少选中两篇再合并'); return; }
+            if (picked.length < 2) { showToast('请至少选中两篇再合并', 'error'); return; }
             if (!confirm('将选中的 ' + picked.length + ' 篇按当前列表顺序合并为一篇新笔记？原笔记保留。')) return;
             const now = Date.now();
             const merged = {
@@ -1169,7 +1216,7 @@ const htmlContent = `
         }
         function batchExport() {
             const picked = orderedSelectedNotes();
-            if (!picked.length) { alert('请先勾选要导出的文章'); return; }
+            if (!picked.length) { showToast('请先勾选要导出的文章', 'error'); return; }
             const md = picked.map(n => '# ' + (n.title || '未命名') + '\\n\\n' + (n.content || '')).join('\\n\\n---\\n\\n');
             const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
             const link = document.createElement('a');
@@ -1332,25 +1379,12 @@ const htmlContent = `
             });
         }
 
-        async function renameItem(id, event) {
+        function renameItem(id, event) {
             event.stopPropagation();
             const list = currentTab === 'novel' ? appData.novels : appData.notes;
             const item = list.find(i => i.id === id);
             if (!item) return;
-
-            const newTitle = prompt(currentTab === 'novel' ? '请输入新的小说书名：' : '请输入新的记事本标题：', item.title);
-            if (newTitle && newTitle.trim() !== "") {
-                item.title = newTitle.trim();
-                if (currentTab === 'note') item.updatedAt = Date.now();
-                if (currentTab === 'note' && activeNoteId === id) {
-                    document.getElementById('note-title').value = item.title;
-                }
-                if (currentTab === 'novel' && activeNovelId === id && item.type === 'short') {
-                    document.getElementById('chapter-title').value = item.title;
-                }
-                renderList();
-                await immediateSave();
-            }
+            openRenameDialog(id, item.title);
         }
 
         let createMode = 'note';
@@ -1372,11 +1406,10 @@ const htmlContent = `
         function onCreateTitleInput() {
             document.getElementById('create-confirm-btn').disabled = !document.getElementById('create-title-input').value.trim();
         }
-        async function confirmCreate() {
-            if (document.getElementById('create-confirm-btn').disabled) return;
+        function handleCreateSubmit(event) {
+            const btn = document.getElementById('create-confirm-btn');
             const title = document.getElementById('create-title-input').value.trim();
-            if (!title) return;
-            closeCreateDialog();
+            if (btn.disabled || !title) { event.preventDefault(); return false; }
             const newItem = { id: genId(), title: title };
             if (createMode === 'novel') {
                 const type = document.querySelector('input[name="new-novel-type"]:checked').value;
@@ -1396,7 +1429,31 @@ const htmlContent = `
             }
             renderList();
             openItem(newItem.id);
-            await immediateSave();
+            immediateSave();
+            return true;
+        }
+        let renameTargetId = null;
+        function openRenameDialog(id, current) {
+            renameTargetId = id;
+            const input = document.getElementById('rename-input');
+            input.value = current || '';
+            document.getElementById('rename-dialog').showModal();
+            setTimeout(() => { input.focus(); input.select(); }, 60);
+        }
+        function handleRenameSubmit(event) {
+            const value = document.getElementById('rename-input').value.trim();
+            if (!value) { event.preventDefault(); return false; }
+            const list = currentTab === 'novel' ? appData.novels : appData.notes;
+            const item = list.find(i => i.id === renameTargetId);
+            if (item) {
+                item.title = value;
+                if (currentTab === 'note') item.updatedAt = Date.now();
+                if (currentTab === 'note' && activeNoteId === renameTargetId) document.getElementById('note-title').value = item.title;
+                if (currentTab === 'novel' && activeNovelId === renameTargetId && item.type === 'short') document.getElementById('chapter-title').value = item.title;
+                renderList();
+                immediateSave();
+            }
+            return true;
         }
 
         async function deleteItem(id, event) {
@@ -1619,17 +1676,17 @@ const htmlContent = `
                         title = document.getElementById('chapter-title').value || '独立短篇';
                         text = document.getElementById('main-content').value;
                     } else {
-                        if (!activeChapterId) { alert('请在左侧目录树选择对应章节再开启沉浸阅读。'); return; }
+                        if (!activeChapterId) { showToast('请在左侧目录树选择对应章节再开启沉浸阅读。', 'error'); return; }
                         title = document.getElementById('chapter-title').value || '未命名章节';
                         text = document.getElementById('main-content').value;
                     }
                 } else {
-                    if (!activeNoteId) { alert('请打开一篇记事本。'); return; }
+                    if (!activeNoteId) { showToast('请打开一篇记事本。', 'error'); return; }
                     title = document.getElementById('note-title').value || '记事本阅读';
                     text = document.getElementById('note-content').value;
                 }
 
-                if (!text.trim() && !title.trim()) { alert('当前文本空空如也~'); return; }
+                if (!text.trim() && !title.trim()) { showToast('当前文本空空如也~'); return; }
 
                 const formattedHtml = text.split('\\n').map(line => {
                     const trimmed = line.trim();
@@ -1734,7 +1791,7 @@ const htmlContent = `
             const msgEl = document.getElementById('crawl-msg');
 
             const novel = appData.novels.find(n => n.id === activeNovelId);
-            if (!novel) { alert('请确保处于小说编辑面板中。'); return; }
+            if (!novel) { showToast('请确保处于小说编辑面板中。', 'error'); return; }
 
             if (sourceCode.length > 100) {
                 const parser = new DOMParser();
@@ -1762,14 +1819,14 @@ const htmlContent = `
                     renderList();
                     await immediateSave();
                 } else {
-                    if (!urlInput) { alert('长篇离线模式必须填写原目录网址以推算跳转关系。'); return; }
+                    if (!urlInput) { showToast('长篇离线模式必须填写原目录网址以推算跳转关系。', 'error'); return; }
                     msgEl.innerText = '🧩 正在分析目录源码超链接...';
                     parseAndCrawlLongNovel(localDoc, urlInput);
                 }
                 return;
             }
 
-            if (!urlInput) { alert('请填写有效网址或直接在下方框内粘贴网页源码！'); return; }
+            if (!urlInput) { showToast('请填写有效网址或直接在下方框内粘贴网页源码！', 'error'); return; }
             msgEl.innerText = '⏳ 正在通过云端API中转页面...';
             msgEl.style.color = 'var(--accent)';
             updateCrawlProgress(0, 0);
