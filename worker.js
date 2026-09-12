@@ -285,10 +285,11 @@ const htmlContent = `
         .tabs { display: flex; margin: 0 20px 16px; padding: 4px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 9px; gap: 3px; }
         button.tab { flex: 1; text-align: center; padding: 8px; color: var(--text-muted); background: transparent; font-weight: 500; font-size: 12px; border-radius: 6px; }
         button.tab.active { color: var(--accent); background: var(--bg-primary); box-shadow: 0 2px 5px #233d3209; }
-        .search-box { position: relative; margin: 0 20px 16px; display: flex; align-items: center; gap: 7px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
-        .search-box input { width: 100%; padding: 8px 24px 10px 0; border: none; background: transparent; font-size: 12px; border-radius: 0; }
-        .search-box:focus-within { border-color: var(--accent); }
-        .search-clear { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; padding: 0; border: none; border-radius: 50%; background: var(--soft); color: var(--text-muted); font-size: 12px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .search-box { position: relative; margin: 0 20px 12px; display: flex; align-items: center; gap: 7px; padding: 0 30px 0 11px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); transition: border-color .15s ease, box-shadow .15s ease; }
+        .search-box input { width: 100%; padding: 9px 0; border: none; background: transparent; font-size: 12px; border-radius: 0; outline: none; box-shadow: none; appearance: none; -webkit-appearance: none; }
+        .search-box input::-webkit-search-cancel-button, .search-box input::-webkit-search-decoration { display: none; }
+        .search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+        .search-clear { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; padding: 0; border: none; border-radius: 50%; background: transparent; color: var(--text-muted); font-size: 13px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         .search-clear:hover { color: var(--text-main); background: var(--border); }
         .item-title mark, .item-preview mark { background: color-mix(in srgb, var(--accent) 32%, transparent); color: inherit; padding: 0 1px; border-radius: 2px; }
         .list-container { flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 15px; }
@@ -310,8 +311,11 @@ const htmlContent = `
         .batch-bar { flex-wrap: wrap; align-items: center; gap: 5px; margin: 0 12px 8px; padding: 7px 9px; background: var(--soft); border-radius: 9px; font-size: 11px; }
         .batch-bar .count { margin-right: auto; color: var(--text-muted); }
         .batch-bar button { padding: 3px 8px; font-size: 11px; font-weight: normal; }
-        .sort-bar { padding: 0 20px 10px; display: flex; }
-        .heading-sort { max-width: 128px; padding: 3px 4px; border: 1px solid var(--border); border-radius: 7px; background: var(--soft); color: var(--text-main); font-size: 10px; }
+        .list-toolbar { display: flex; align-items: center; gap: 6px; margin: 0 20px 14px; }
+        .list-toolbar select { flex: 1; min-width: 0; padding: 8px 10px; font-size: 12px; border-radius: 10px; background: var(--bg-secondary); outline: none; box-shadow: none; appearance: none; -webkit-appearance: none; }
+        .list-toolbar select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+        .toolbar-btn { padding: 8px 12px; font-size: 11px; font-weight: 500; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); color: var(--text-main); white-space: nowrap; cursor: pointer; }
+        .toolbar-btn:hover { border-color: var(--accent); color: var(--accent); }
         .item-meta { font-size: 10px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; }
         .add-btn-container { padding: 17px 20px; border-top: 1px solid var(--border); display: flex; }
         .add-btn-container button { width: 100%; background: transparent; color: var(--accent); border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); font-size: 12px; font-weight: 500; }
@@ -518,21 +522,24 @@ const htmlContent = `
         <div class="main-container">
             <button class="sidebar-scrim" id="sidebar-scrim" onclick="closeSidebar()" aria-label="关闭作品列表" tabindex="-1"></button>
             <aside class="sidebar" id="main-sidebar" aria-label="作品列表">
-                <div class="sidebar-heading"><strong>我的作品</strong><span style="display:flex;align-items:center;gap:6px;"><span id="item-count">0 篇</span><select id="note-sort" class="heading-sort" aria-label="随手记排序方式" title="排序方式" onchange="changeNoteSort(this.value)" style="display:none;">
-                        <option value="modified">修改时间 新→旧</option>
-                        <option value="modified-asc">修改时间 旧→新</option>
-                        <option value="created">创建时间 新→旧</option>
-                        <option value="created-asc">创建时间 旧→新</option>
-                        <option value="title">标题 A→Z</option>
-                        <option value="title-desc">标题 Z→A</option>
-                        <option value="manual">手动排序</option>
-                    </select></span></div>
+                <div class="sidebar-heading"><strong>我的作品</strong><span id="item-count">0 篇</span></div>
                 <div class="tabs">
                     <button class="tab active" id="tab-note" onclick="switchTab('note')" aria-pressed="true">随手记</button>
                     <button class="tab" id="tab-novel" onclick="switchTab('novel')" aria-pressed="false">故事集</button>
                 </div>
                 <label class="search-box" id="search-box-wrap"><span aria-hidden="true">⌕</span><input type="search" id="list-search" aria-label="搜索作品标题和正文" placeholder="搜索标题或正文…" oninput="renderList()" onkeydown="if (event.key === 'Escape') clearSearch()"><button type="button" class="search-clear" id="search-clear" aria-label="清空搜索" onclick="event.preventDefault(); event.stopPropagation(); clearSearch()" style="display:none;">×</button></label>
-                <div class="sort-bar" id="note-tools-bar"><button class="btn-text" id="batch-toggle-btn" onclick="toggleBatchMode()" style="display:none;">批量管理</button></div>
+                <div class="list-toolbar" id="note-tools-bar">
+                    <select id="note-sort" aria-label="随手记排序方式" title="排序方式" onchange="changeNoteSort(this.value)" style="display:none;">
+                        <option value="modified">按修改时间（新 → 旧）</option>
+                        <option value="modified-asc">按修改时间（旧 → 新）</option>
+                        <option value="created">按创建时间（新 → 旧）</option>
+                        <option value="created-asc">按创建时间（旧 → 新）</option>
+                        <option value="title">按标题（A → Z）</option>
+                        <option value="title-desc">按标题（Z → A）</option>
+                        <option value="manual">手动排序（置顶优先 · 可拖拽）</option>
+                    </select>
+                    <button class="toolbar-btn" id="batch-toggle-btn" onclick="toggleBatchMode()" style="display:none;">批量管理</button>
+                </div>
                 <div class="batch-bar" id="batch-bar" style="display:none;">
                     <span class="count" id="batch-count">已选 0 篇</span>
                     <button class="btn-text" onclick="batchSelectAll()">全选</button>
