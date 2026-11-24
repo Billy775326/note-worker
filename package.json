@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "build:markdown": "node scripts/build-markdown.mjs",
-    "test": "node --test test/worker.test.mjs",
+    "test": "node --test test/*.mjs",
     "dev": "npx wrangler dev",
-    "deploy": "npx wrangler deploy"
+    "deploy": "npx wrangler deploy",
+    "check": "node --check worker.js"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

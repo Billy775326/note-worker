@@ -111,6 +111,63 @@ async function saveHistory(env, previousRaw, force = false) {
     await env.CLOUD_EDITOR_KV.put(HISTORY_KEY, JSON.stringify(keep));
   } catch {}
 }
+// Per-note APIs preserve the existing KV document and unrelated novel data.
+async function notesApi(request, env, url, entrance) {
+  const match = /^\/api\/notes(?:\/([A-Za-z0-9_-]{1,128}))?$/.exec(url.pathname);
+  if (!match) return json({ error: "接口不存在" }, 404);
+  const id = match[1];
+  const allowed = id ? ["GET", "PATCH", "DELETE"] : ["GET", "POST"];
+  if (!allowed.includes(request.method)) return json({ error: "请求方法不支持" }, 405, { Allow: allowed.join(", ") });
+  const raw = await env.CLOUD_EDITOR_KV.get("user_creative_data");
+  let data;
+  try { data = raw ? JSON.parse(raw) : { notes: [], novels: [] }; }
+  catch { throw new HttpError(500, "存储数据损坏，未执行写入"); }
+  if (!validData(data)) throw new HttpError(500, "存储数据结构无效，未执行写入");
+  const index = id ? data.notes.findIndex(note => note.id === id) : -1;
+  if (id && index === -1) return json({ error: "笔记不存在" }, 404);
+  if (request.method === "GET") {
+    if (id) return json({ note: data.notes[index] });
+    const q = (url.searchParams.get("q") || "").toLocaleLowerCase();
+    const number = (key, fallback, max) => {
+      const value = url.searchParams.get(key);
+      if (value === null) return fallback;
+      if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > max) throw new HttpError(400, key + " 参数无效");
+      return Number(value);
+    };
+    const offset = number("offset", 0, Number.MAX_SAFE_INTEGER);
+    const limit = number("limit", 50, 200);
+    if (limit < 1) throw new HttpError(400, "limit 必须为 1～200");
+    const found = data.notes.filter(n => !q || (n.title + " " + n.content).toLocaleLowerCase().includes(q));
+    return json({ notes: found.slice(offset, offset + limit), total: found.length, offset, limit });
+  }
+  if (request.method !== "DELETE") {
+    const body = await readJson(request, 20 * 1024 * 1024);
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(400, "请求体必须为对象");
+    const keys = Object.keys(body);
+    if (!keys.length || keys.some(key => !["title", "content", "pinned"].includes(key))) throw new HttpError(400, "只允许 title、content、pinned 字段");
+    if (("title" in body && (typeof body.title !== "string" || !body.title.trim())) ||
+        ("content" in body && typeof body.content !== "string") ||
+        ("pinned" in body && typeof body.pinned !== "boolean")) throw new HttpError(400, "字段类型或标题无效");
+    const now = Date.now();
+    if (!id) {
+      if (!("title" in body)) throw new HttpError(400, "新建笔记必须提供 title");
+      const note = { id: crypto.randomUUID(), title: body.title.trim(), content: body.content ?? "", pinned: body.pinned ?? false, createdAt: now, updatedAt: now };
+      data.notes.unshift(note);
+    } else {
+      data.notes[index] = { ...data.notes[index], ...body, updatedAt: now };
+      if ("title" in body) data.notes[index].title = body.title.trim();
+    }
+  } else data.notes.splice(index, 1);
+  const serialized = JSON.stringify(data);
+  if (enc.encode(serialized).byteLength > 20 * 1024 * 1024) throw new HttpError(413, "笔记库超过 20 MiB 限制");
+  if (raw !== serialized) await saveHistory(env, raw);
+  await env.CLOUD_EDITOR_KV.put("user_creative_data", serialized);
+  if (request.method === "DELETE") return json({ success: true, id });
+  const note = id ? data.notes[index] : data.notes[0];
+  return json({ note }, id ? 200 : 201, id ? {} : { Location: entrance + "/api/notes/" + note.id });
+}
+
+
 export default {
   async fetch(request, env) {
     try {
@@ -121,7 +178,7 @@ export default {
       if (!entrance || !url.pathname.startsWith(entrance + '/api/')) return json({ error: 'Not Found' }, 404);
       url.pathname = url.pathname.slice(entrance.length);
       if (!url.pathname.startsWith('/api/')) return json({ error: 'Not Found' }, 404);
-      if (request.method === 'POST' && (request.headers.get('Origin') !== url.origin || request.headers.get('X-Requested-With') !== 'note-editor')) return json({ error: '请求来源无效' }, 403);
+      if (['POST', 'PATCH', 'DELETE'].includes(request.method) && (request.headers.get('Origin') !== url.origin || request.headers.get('X-Requested-With') !== 'note-editor')) return json({ error: '请求来源无效' }, 403);
       const missing = missingConfig(env);
       if (missing.length) return json({ error: '服务配置不完整，缺少：' + missing.join('；') }, 503);
       if (url.pathname === '/api/login' && request.method === 'POST') {
@@ -138,6 +195,7 @@ export default {
       }
       if (url.pathname === '/api/logout' && request.method === 'POST') return json({ success: true }, 200, { 'Set-Cookie': cookie('', 0) });
       if (!await authenticated(request, env)) return json({ error: '登录已失效，请重新登录' }, 401);
+      if (url.pathname === "/api/notes" || url.pathname.startsWith("/api/notes/")) return await notesApi(request, env, url, entrance);
       if (url.pathname === '/api/session' && request.method === 'GET') return json({ authenticated: true });
       if (url.pathname === '/api/get-data' && request.method === 'GET') {
         const raw = await env.CLOUD_EDITOR_KV.get('user_creative_data');
@@ -197,6 +255,7 @@ const publicContent = `<!DOCTYPE html>
 <style>*{box-sizing:border-box}body{margin:0;background:#edf0e7;color:#283f34;font-family:'Segoe UI','Microsoft YaHei',sans-serif;min-height:100vh;padding:32px}main{max-width:1060px;margin:auto}header{display:flex;align-items:center;gap:12px;padding:12px 0;font:30px Georgia,serif}header span{position:relative;display:grid;place-items:center;background:#356b53;color:#fffefa;width:40px;height:40px;border-radius:12px;font:normal 24px 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;clip-path:polygon(0 0,66% 0,100% 34%,100% 100%,0 100%)}header span::after{content:'';position:absolute;top:0;right:0;width:34%;height:34%;background:#fffefa;opacity:.55;clip-path:polygon(0 0,0 100%,100% 100%)}header small{font:11px sans-serif;letter-spacing:2px;color:#778176;margin-left:auto}.hero{margin-top:50px;padding:64px;border:1px solid #dde3d7;border-radius:24px;background:#fffefa;position:relative;overflow:hidden}.eyebrow{font-size:11px;letter-spacing:3px;color:#778176}h1{font-family:'Songti SC',SimSun,serif;font-size:clamp(32px,5vw,58px);line-height:1.5;font-weight:500;letter-spacing:3px;margin:24px 0}p{color:#768172;font-size:14px;line-height:2}.quote{margin:42px 0 0;padding:24px 0 0;border-top:1px solid #e2e6dc;font:italic 20px Georgia,serif;color:#356b53}.features{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin:34px 0}.features article{padding:18px 6px}.features span{font:italic 22px Georgia,serif;color:#7b9b7f}.features h2{font-size:16px;font-weight:500;margin-top:18px}.features p{font-size:12px}footer{border-top:1px solid #d9dfd2;padding:20px 0;font-size:10px;letter-spacing:2px;color:#788373}@media(max-width:600px){body{padding:22px}.hero{margin-top:30px;padding:34px 26px}.features{grid-template-columns:1fr;gap:0}.features article{padding:12px 6px}.quote{font-size:16px}header small{font-size:9px}}</style></head>
 <body><main><header><span>✨</span>note<small>A QUIET PLACE FOR WORDS</small></header><section class="hero"><div class="eyebrow">LESS NOISE. MORE WORDS.</div><h1>让灵感落在纸上，<br>让日常慢慢生长。</h1><p>一段文字，收藏一个瞬间。<br>在忙碌的生活里，留一点空间给思考、阅读与创作。</p><div class="quote">Every little thought deserves a page.</div></section><section class="features"><article><span>01</span><h2>记录片刻</h2><p>把稍纵即逝的念头，写成值得珍藏的文字。</p></article><article><span>02</span><h2>整理思绪</h2><p>从一个想法开始，慢慢找到清晰的方向。</p></article><article><span>03</span><h2>专注创作</h2><p>让文字拥有自己的节奏，让故事自然发生。</p></article></section><footer>NOTE / 留一页给灵感</footer></main></body></html>`;
 
+var editorTabScript = "// Tab edits indentation only inside content editors; other controls retain native navigation.\n(() => {\n  const isEditor = element => element instanceof HTMLTextAreaElement &&\n    ['note-content', 'main-content', 'crawler-source'].includes(element.id);\n  document.addEventListener('keydown', event => {\n    if (event.key === 'Escape' && !event.isComposing && isEditor(document.activeElement)) {\n      event.preventDefault();\n      event.stopImmediatePropagation();\n      document.activeElement.blur();\n    }\n  }, true);\n  document.addEventListener('pointerdown', event => {\n    const editor = document.activeElement;\n    if (isEditor(editor) && event.target !== editor) editor.blur();\n  }, true);\n  document.addEventListener('keydown', event => {\n    const editor = event.target;\n    if (event.key !== 'Tab' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey ||\n        !(editor instanceof HTMLTextAreaElement) || editor.disabled || editor.readOnly ||\n        !['note-content', 'main-content', 'crawler-source'].includes(editor.id)) return;\n    event.preventDefault();\n    const value = editor.value;\n    const start = editor.selectionStart;\n    const end = editor.selectionEnd;\n    const direction = editor.selectionDirection;\n    const scrollTop = editor.scrollTop;\n    const scrollLeft = editor.scrollLeft;\n    let replaceStart = start, replaceEnd = end, replacement = '\\t';\n    let nextStart = start + 1, nextEnd = start + 1;\n    if (event.shiftKey || value.slice(start, end).includes('\\n')) {\n      replaceStart = value.lastIndexOf('\\n', start - 1) + 1;\n      if (start === 0) replaceStart = 0;\n      const lastSelected = end > start && value[end - 1] === '\\n' ? end - 1 : end;\n      const nextBreak = value.indexOf('\\n', lastSelected);\n      replaceEnd = nextBreak === -1 ? value.length : nextBreak;\n      const lines = value.slice(replaceStart, replaceEnd).split('\\n');\n      const changes = lines.map(line => event.shiftKey ? -(line.match(/^(?:\\t| {1,4})/)?.[0].length || 0) : 1);\n      replacement = lines.map((line, i) => event.shiftKey ? line.slice(-changes[i]) : '\\t' + line).join('\\n');\n      if (event.shiftKey && changes.every(change => change === 0)) return;\n      nextStart = event.shiftKey ? Math.max(replaceStart, start + changes[0]) : start + 1;\n      nextEnd = Math.max(nextStart, end + changes.reduce((sum, change) => sum + change, 0));\n    }\n    editor.setSelectionRange(replaceStart, replaceEnd);\n    // Native editing keeps browser undo history. Fallback still emits input for autosave.\n    let edited = false;\n    try { edited = document.execCommand('insertText', false, replacement); } catch {}\n    if (!edited) {\n      editor.setRangeText(replacement, replaceStart, replaceEnd, 'end');\n      editor.dispatchEvent(new Event('input', { bubbles: true }));\n    }\n    editor.setSelectionRange(nextStart, nextEnd, direction);\n    editor.scrollTop = scrollTop;\n    editor.scrollLeft = scrollLeft;\n  });\n})();\n";
 const htmlContent = `
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -739,6 +798,7 @@ const htmlContent = `
     </dialog>
     <script>
         ${markdownVendor}
+        ${editorTabScript}
         let appData = { novels: [], notes: [] };
         let currentTab = 'note'; 
         let activeNovelId = null, activeVolumeId = null, activeChapterId = null, activeNoteId = null;

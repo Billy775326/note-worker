@@ -11,6 +11,12 @@
 - **版本历史**：云端自动留存最近 10 份快照，按当前打开的文章独立展示实际变化的版本，回滚仅作用于该文章；回滚前当前内容先自动留存，可再回滚撤销。
 - **安全基线**：私人入口 + HMAC 会话 + 登录限流 + CSRF/SSRF 防护 + DOMPurify 过滤，详情见[架构与安全](#架构与安全)。
 
+## 记事本 API
+
+新增单篇笔记列表、关键词搜索、分页、详情、新建、部分修改和删除接口，统一位于 `/<login>/api/notes`。继续使用登录 Cookie；写操作检查同源 Origin 和 `X-Requested-With`。具体字段、错误码、调用示例及 KV 并发限制见 [API.md](API.md)。
+
+编辑框内支持 Tab / Shift+Tab 缩进，Esc 或点击外部退出编辑焦点，见 [键盘操作](EDITOR-KEYBOARD.md)。
+
 ## 两个关键字段：入口与密码
 
 部署后的访问入口与登录凭据由以下两项配置决定：
@@ -146,3 +152,29 @@ note-worker/
 - **已知取舍**：MD5 加盐抗离线破解能力弱，公网长期使用建议迁移 PBKDF2/Argon2；KV 全量保存模型下多标签页并发编辑可能互相覆盖，未实现协同编辑。
 
 官方文档：[Web Crypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/)、[Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)、[KV bindings](https://developers.cloudflare.com/kv/concepts/kv-bindings/)、[Rate limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)。
+
+
+## 服务器开发与现有 Worker 更新
+
+环境：Node.js 20+；仓库锁文件使用 npm。项目根目录执行：
+
+```bash
+npm ci
+npm run check
+npm test
+```
+
+`npm test` 同时执行原有鉴权/代理测试和新增 CRUD 回归测试，使用内存 KV，不写入线上笔记。修改 Markdown 渲染源文件后才需 `npm run build:markdown`；普通 API 修改无需重新生成第三方内嵌资源。
+
+已有服务器副本通过项目 `.local/with-credentials.sh` 加载凭据路径；`.local` 不提交到 Git，也不复制历史 Windows 代理配置。首次使用核对本地文档中的路径。更新已有 Worker 前核对账号、KV、限流、自定义域名和当前线上版本，并备份线上脚本/设置。
+
+```bash
+.local/with-credentials.sh npx wrangler whoami
+.local/with-credentials.sh npx wrangler deploy --dry-run
+# 仅在获得生产部署授权后执行；使用经过核对的配置
+.local/with-credentials.sh npx wrangler deploy --keep-vars
+```
+
+`--keep-vars` 保留控制台普通变量；Secrets 不重新生成或上传。首次部署仍按上面的初始化步骤配置所有必需绑定。自定义域名需要在实际部署配置的 `routes` 中保留；不要用缺少域名的配置覆盖已有线上路由。部署后验证公开页、私人入口和未授权接口响应；真实 CRUD 写入验收只对专用测试笔记执行。
+
+本轮 API 沿用现有数据格式和 Secrets，不含数据迁移，也不包含已撤回的 UI/UX 改版。变更记录见 [CHANGELOG.md](CHANGELOG.md)。版本以 Git 提交和 Cloudflare 部署版本标识，本次不创建 SemVer 标签或 GitHub Release。若需回退，恢复上一部署的脚本与配置；脚本回退不会恢复已经修改或删除的笔记。
